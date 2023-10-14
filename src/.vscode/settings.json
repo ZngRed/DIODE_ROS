@@ -1,0 +1,23 @@
+{
+    "cmake.sourceDirectory": "/home/dhu/catkin_ws/src/ssr_pkg",
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/home/dhu/intel/openvino_2021/python/python3.8",
+        "/home/dhu/intel/openvino_2021/python/python3",
+        "/home/dhu/intel/openvino_2021/deployment_tools/tools/post_training_optimization_toolkit",
+        "/home/dhu/intel/openvino_2021/deployment_tools/open_model_zoo/tools/accuracy_checker",
+        "/home/dhu/intel/openvino_2021/deployment_tools/model_optimizer",
+        "/home/dhu/intel/openvino_2021/data_processing/dl_streamer/python",
+        "/home/dhu/intel/openvino_2021/data_processing/gstreamer/lib/python3.8/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/home/dhu/intel/openvino_2021/python/python3.8",
+        "/home/dhu/intel/openvino_2021/python/python3",
+        "/home/dhu/intel/openvino_2021/deployment_tools/tools/post_training_optimization_toolkit",
+        "/home/dhu/intel/openvino_2021/deployment_tools/open_model_zoo/tools/accuracy_checker",
+        "/home/dhu/intel/openvino_2021/deployment_tools/model_optimizer",
+        "/home/dhu/intel/openvino_2021/data_processing/dl_streamer/python",
+        "/home/dhu/intel/openvino_2021/data_processing/gstreamer/lib/python3.8/site-packages"
+    ]
+}

@@ -1,0 +1,7 @@
+<launch>
+
+    <node pkg="img_pub" type="Using_Video" name="Using_Video"/>
+
+    <node pkg="inference" type="buff_inference" name="buff_inference"/>
+
+</launch>
