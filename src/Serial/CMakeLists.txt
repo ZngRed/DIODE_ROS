@@ -151,7 +151,7 @@ add_executable(serial_receive src/serial_receive.cpp)
 #   ${catkin_LIBRARIES}
 # )
 target_link_libraries(serial_receive
-  serial ${catkin_LIBRARIES}
+  ${catkin_LIBRARIES}
 )
 
 #############

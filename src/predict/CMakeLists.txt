@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(inference)
+project(predict)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -10,13 +10,7 @@ project(inference)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
-  cv_bridge
-  image_transport
-  sensor_msgs
 )
-find_package(OpenCV 4.5.0)
-find_package(InferenceEngine REQUIRED)
-find_package(Eigen3 REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -109,7 +103,7 @@ find_package(Eigen3 REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES inference
+#  LIBRARIES predict
 #  CATKIN_DEPENDS roscpp std_msgs
 #  DEPENDS system_lib
 )
@@ -121,16 +115,13 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-  include
+# include
   ${catkin_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
-  ${InferenceEngine_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/inference.cpp
+#   src/${PROJECT_NAME}/predict.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -141,8 +132,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/inference_node.cpp)
-add_executable(buff_inference src/buff_inference.cpp)
+# add_executable(${PROJECT_NAME}_node src/predict_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -158,9 +148,6 @@ add_executable(buff_inference src/buff_inference.cpp)
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(buff_inference
-  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${InferenceEngine_LIBRARIES}
-)
 
 #############
 ## Install ##
@@ -209,7 +196,7 @@ target_link_libraries(buff_inference
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_inference.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_predict.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

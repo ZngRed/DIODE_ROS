@@ -1,12 +1,11 @@
-#include <Using_Video/Using_Video.h>
+#include <USBCamera/USBCamera.h>
 
 int main(int argc, char** argv)
 {
     setlocale(LC_ALL,"");
-    string path = "/home/dhu/Sample/test.mp4";
-    cv::VideoCapture cap(path);
+    cv::VideoCapture cap(0);
 
-    ros::init(argc, argv, "Using_Video"); // 初始化ROS节点
+    ros::init(argc, argv, "USBCamera"); // 初始化ROS节点
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
     image_transport::Publisher image_pub = it.advertise("images", 10); // 创建图像发布者 话题名称为images
