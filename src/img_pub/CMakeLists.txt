@@ -14,7 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
 )
-find_package(OpenCV REQUIRED)
+# file(GLOB_RECURSE OLD_OPENCV "/usr/lib/aarch64-linux-gnu/libopencv*")
+# list(REMOVE_ITEM catkin_LIBRARIES ${OLD_OPENCV})
+set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
+find_package(OpenCV 4.5.0 REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)

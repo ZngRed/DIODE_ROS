@@ -14,7 +14,10 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   sensor_msgs
 )
-find_package(OpenCV 4.5.0)
+# file(GLOB_RECURSE OLD_OPENCV "/usr/lib/aarch64-linux-gnu/libopencv*")
+# list(REMOVE_ITEM catkin_LIBRARIES ${OLD_OPENCV})
+set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
+find_package(OpenCV 4.5.0 REQUIRED)
 find_package(InferenceEngine REQUIRED)
 find_package(Eigen3 REQUIRED)
 

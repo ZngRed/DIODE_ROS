@@ -242,6 +242,7 @@ static void decodeOutputs(const float* prob, std::vector<BuffObject>& objects,
 
 void drawPred(Mat& frame, std::vector<Point2f> landmark)   // Draw the predicted bounding box
 {
+    // cout<<"KKK"<<endl;
     // circle(frame, Point(0, 0), 5, Scalar(255, 255, 0), -1);
     // circle(frame, Point(416, 416), 5, Scalar(255, 255, 0), -1);
     //画出扇叶五点、扇叶中心、能量机关中心
@@ -280,22 +281,20 @@ void buff_infer::model_init()
     output_name = network.getOutputsInfo().begin()->first;
 
     // Loading a model to the device
-    string device_name = "GPU";
-    executable_network = ie.LoadNetwork(network, device_name);
+    executable_network = ie.LoadNetwork(network, "GPU");
 
     // Create an infer request
     infer_request = executable_network.CreateInferRequest();
+
+    // Process output
+    const Blob::Ptr output_blob = infer_request.GetBlob(output_name);
+    moutput = as<MemoryBlob>(output_blob);
 }
 
 void buff_infer::inference(Mat &img)
 {
-    // Process output
-    const Blob::Ptr output_blob = infer_request.GetBlob(output_name);
-    MemoryBlob::CPtr moutput = as<MemoryBlob>(output_blob);
-
-    Eigen::Matrix<float,3,3> transfrom_matrix;
     cv::Mat pr_img = scaledResize(img,transfrom_matrix);
-    cv::Mat pre,pre_split[3];
+    cv::Mat pre, pre_split[3];
     pr_img.convertTo(pre,CV_32F);
     cv::split(pre,pre_split);
     vector<BuffObject> objects;
@@ -319,8 +318,8 @@ void buff_infer::inference(Mat &img)
 
     auto moutputHolder = moutput->rmap();
     const float* net_pred = moutputHolder.as<const PrecisionTrait<Precision::FP32>::value_type*>();
-    int img_w = INPUT_W;
-    int img_h = INPUT_H;
+    int img_w = img.cols;
+    int img_h = img.rows;
     decodeOutputs(net_pred, objects, transfrom_matrix, img_w, img_h);
     for (auto object = objects.begin(); object != objects.end(); ++object){
         if ((*object).pts.size() >= 10){

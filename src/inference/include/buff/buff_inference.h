@@ -50,8 +50,10 @@ private:
     InferenceEngine::CNNNetwork network;
     InferenceEngine::ExecutableNetwork executable_network;
     InferenceEngine::InferRequest infer_request;
+    MemoryBlob::CPtr moutput;
     std::string input_name;
     std::string output_name;
+    Eigen::Matrix<float,3,3> transfrom_matrix;
 public:
     buff_infer();
     ~buff_infer();
