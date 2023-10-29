@@ -10,6 +10,8 @@ static constexpr float BBOX_CONF_THRESH = 0.6;
 static constexpr float MERGE_CONF_ERROR = 0.15;
 static constexpr float MERGE_MIN_IOU = 0.2;
 
+buff_infer infer;
+
 static inline int argmax(const float *ptr, int len) 
 {
     int max_arg = 0;
@@ -238,44 +240,55 @@ static void decodeOutputs(const float* prob, std::vector<BuffObject>& objects,
         }
 }
 
-void drawPred(Mat& frame, vector<int> landmark)   // Draw the predicted bounding box
+void drawPred(Mat& frame, std::vector<Point2f> landmark)   // Draw the predicted bounding box
 {
-    circle(frame, Point(0, 0), 5, Scalar(255, 255, 0), -1);
-    circle(frame, Point(416, 416), 5, Scalar(255, 255, 0), -1);
+    // circle(frame, Point(0, 0), 5, Scalar(255, 255, 0), -1);
+    // circle(frame, Point(416, 416), 5, Scalar(255, 255, 0), -1);
     //画出扇叶五点、扇叶中心、能量机关中心
+    // cout<<landmark.size()<<endl;
     for (int i = 0; i < 5; i++)
     {
-      circle(frame, Point(landmark[2 * i], landmark[2 * i + 1]), 5, Scalar(0, 255, 0), -1);
+      circle(frame, Point(landmark[i].x, landmark[i].y), 5, Scalar(0, 255, 0), -1);
     }
 }
 
-void inference(Mat &img)
+buff_infer::buff_infer()
 {
-    string input_model = "/home/dhu/Model/buff_0724.xml";
-
+}
+buff_infer::~buff_infer()
+{
+}
+/**
+ * @brief 初始化模型
+*/
+void buff_infer::model_init()
+{
+    std::string input_model = "/home/dhu/Model/buff_0724.xml";
     // Initialize inference engine core
-    Core ie;
     ie.SetConfig({{CONFIG_KEY(CACHE_DIR), "../.cache"}});
-    ie.SetConfig({{CONFIG_KEY(GPU_THROUGHPUT_STREAMS),"1"}}  );
+    ie.SetConfig({{CONFIG_KEY(GPU_THROUGHPUT_STREAMS),"1"}});
 
     // Read a model in OpenVINO Intermediate Representation (.xml and .bin files) or ONNX (.onnx file) format
-    CNNNetwork network = ie.ReadNetwork(input_model);
+    network = ie.ReadNetwork(input_model);
 
     // Prepare input blobs
     InputInfo::Ptr input_info = network.getInputsInfo().begin()->second;
-    std::string input_name = network.getInputsInfo().begin()->first;
+    input_name = network.getInputsInfo().begin()->first;
 
     // Prepare output blobs
     DataPtr output_info = network.getOutputsInfo().begin()->second;
-    std::string output_name = network.getOutputsInfo().begin()->first;
+    output_name = network.getOutputsInfo().begin()->first;
 
     // Loading a model to the device
     string device_name = "GPU";
-    ExecutableNetwork executable_network = ie.LoadNetwork(network, device_name);
+    executable_network = ie.LoadNetwork(network, device_name);
 
     // Create an infer request
-    InferRequest infer_request = executable_network.CreateInferRequest();
+    infer_request = executable_network.CreateInferRequest();
+}
 
+void buff_infer::inference(Mat &img)
+{
     // Process output
     const Blob::Ptr output_blob = infer_request.GetBlob(output_name);
     MemoryBlob::CPtr moutput = as<MemoryBlob>(output_blob);
@@ -304,7 +317,7 @@ void inference(Mat &img)
     // Do inference
     infer_request.Infer();
 
-    auto moutputHolder = moutput->rmap();;
+    auto moutputHolder = moutput->rmap();
     const float* net_pred = moutputHolder.as<const PrecisionTrait<Precision::FP32>::value_type*>();
     int img_w = INPUT_W;
     int img_h = INPUT_H;
@@ -313,17 +326,16 @@ void inference(Mat &img)
         if ((*object).pts.size() >= 10){
             auto N = (*object).pts.size();
             cv::Point2f pts_final[5];
-            vector<int> landmark;
+            std::vector<Point2f> landmark;
             for (int i = 0; i < N; i++){
                 pts_final[i % 5]+=(*object).pts[i];
             }
             for (int i = 0; i < 5; i++){
                 pts_final[i].x = pts_final[i].x / (N / 5);
                 pts_final[i].y = pts_final[i].y / (N / 5);
-                landmark.push_back(pts_final[i].x);
-                landmark.push_back(pts_final[i].y);
+                landmark.push_back(pts_final[i]);
             }
-            drawPred(img,landmark);
+            drawPred(img, landmark);
         }
     }
     return ;
@@ -332,13 +344,14 @@ void inference(Mat &img)
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
-    inference(img);
+    infer.inference(img);
     cv::imshow("IMG", img);
     cv::waitKey(1);
 }
 
 int main(int argc, char** argv)
 {
+    infer.model_init();
     ros::init(argc, argv, "buff_inference"); // 初始化ROS节点
     cv::namedWindow("IMG");
     ros::NodeHandle nh;

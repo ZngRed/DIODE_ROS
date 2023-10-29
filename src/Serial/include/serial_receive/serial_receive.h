@@ -1,7 +1,7 @@
 #include <ros/ros.h>
 #include <std_msgs/String.h>
 #include <serial/serial.h>
-#include </home/dhu/RM_ROS_ws/devel/include/rm_msgs/serial_receiver.h>
+#include </home/dhu/DIODE_ROS/devel/include/rm_msgs/serial_receiver.h>
 
 //CRC校验
 const uint16_t wCRC_Table[256] =

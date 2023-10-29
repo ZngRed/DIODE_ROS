@@ -1,6 +1,6 @@
-#include <buff_predict/buff_predict.h>
+#include <buff/buff_predict.h>
 
-double BuffPredictor::evalRMSE(double params[4])
+double buff_predict::evalRMSE(double params[4])
 {
     double rmse_sum = 0;
     double rmse = 0;
@@ -15,7 +15,7 @@ double BuffPredictor::evalRMSE(double params[4])
     return rmse;
 }
 
-double BuffPredictor::calcAimingAngleOffset(double params[4], double t0, double t1 , int mode)
+double buff_predict::calcAimingAngleOffset(double params[4], double t0, double t1 , int mode)
 {
     auto a = params[0];
     auto omega = params[1];
@@ -41,8 +41,34 @@ double BuffPredictor::calcAimingAngleOffset(double params[4], double t0, double 
     return theta1 - theta0;
 }
 
-bool BuffPredictor::predict(double speed, double dist, int timestamp, double &result)
+bool buff_predict::WhereToAim(double theta_offset)
 {
+    Eigen::Vector3d hit_point_world = {sin(theta_offset) * fan_length, (cos(theta_offset) - 1) * fan_length,0};
+    Eigen::Vector3d hit_point_cam = {0,0,0};
+
+    hit_point_world = (target.rmat * hit_point_world) + target.armor3d_world;
+    hit_point_cam = coordsolver.worldToCam(hit_point_world, rmat_imu);
+    auto r_center_cam = coordsolver.worldToCam(target.centerR3d_world, rmat_imu);
+    auto center2d_src = coordsolver.reproject(r_center_cam);
+    auto target2d = coordsolver.reproject(hit_point_cam);
+    auto angle = coordsolver.getAngle(hit_point_cam,rmat_imu);
+
+    data = {(float)angle[1], (float)angle[0], (float)hit_point_cam.norm(), is_switched, 1, 1, 1};
+}
+
+/**
+ * @brief 预测
+ * 
+ * @param speed 旋转速度
+ * @param dist 距离
+ * @param timestamp 时间戳
+ * @param result 结果输出
+ * 
+ * @return 是否预测成功
+*/
+bool buff_predict::predict(double speed, double dist, int timestamp)
+{
+    double result;
     auto t1=std::chrono::steady_clock::now();
     TargetInfo target = {speed, dist, timestamp};
     if (mode != last_mode)
@@ -109,7 +135,6 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
             history_info.pop_front();
         history_info.push_back(target);
     }
-
 
     //计算旋转方向
     double rotate_speed_sum = 0;
@@ -257,11 +282,17 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
 
     }
     // plt::show();
+    WhereToAim(result);
     return true;
 }
 
 int main(int argc, char** argv)
 {
     setlocale(LC_ALL,"");
+    ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
+    ros::NodeHandle nh;
+    ros::ImageTransport it(nh);
+    ros::Subscriber image_sub = it.subscribe("buff_predict", 10, buff_predict::predict);
+    ros::spin();
     return 0;
 }

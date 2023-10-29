@@ -3,7 +3,7 @@
 int main(int argc, char** argv)
 {
     setlocale(LC_ALL,"");
-    string path = "/home/dhu/Sample/test.mp4";
+    string path = "/home/dhu/Sample/Test.mp4";
     cv::VideoCapture cap(path);
 
     ros::init(argc, argv, "Using_Video"); // 初始化ROS节点

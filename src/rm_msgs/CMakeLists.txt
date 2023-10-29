@@ -52,8 +52,8 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   serial_receiver.msg
-  buff_object.msg
-  buff_PnP.msg
+  # buff_object.msg
+  # buff_PnP.msg
 )
 
 ## Generate services in the 'srv' folder

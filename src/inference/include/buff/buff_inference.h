@@ -42,3 +42,20 @@ struct GridAndStride
     int grid1;
     int stride;
 };
+
+class buff_infer
+{
+private:
+    InferenceEngine::Core ie;
+    InferenceEngine::CNNNetwork network;
+    InferenceEngine::ExecutableNetwork executable_network;
+    InferenceEngine::InferRequest infer_request;
+    std::string input_name;
+    std::string output_name;
+public:
+    buff_infer();
+    ~buff_infer();
+
+    void model_init();
+    void inference(Mat &img);
+};
