@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
   sensor_msgs
+  rm_msgs
 )
 # file(GLOB_RECURSE OLD_OPENCV "/usr/lib/aarch64-linux-gnu/libopencv*")
 # list(REMOVE_ITEM catkin_LIBRARIES ${OLD_OPENCV})

@@ -1,5 +1,23 @@
 #include <buff/buff_predict.h>
 
+buff_predict::buff_predict()
+{
+    is_params_confirmed = false;
+    params[0] = 0;
+    params[1] = 0;
+    params[2] = 0;
+    params[3] = 0;
+}
+buff_predict::~buff_predict()
+{
+}
+
+/**
+ * @brief 计算RMSE指标
+ * 
+ * @param params 参数首地址指针
+ * @return RMSE值 
+ */
 double buff_predict::evalRMSE(double params[4])
 {
     double rmse_sum = 0;
@@ -15,6 +33,14 @@ double buff_predict::evalRMSE(double params[4])
     return rmse;
 }
 
+/**
+ * @brief 计算角度提前量
+ * @param params 拟合方程参数
+ * @param t0 积分下限
+ * @param t1 积分上限
+ * @param mode 模式
+ * @return 角度提前量(rad)
+*/
 double buff_predict::calcAimingAngleOffset(double params[4], double t0, double t1 , int mode)
 {
     auto a = params[0];
@@ -41,6 +67,10 @@ double buff_predict::calcAimingAngleOffset(double params[4], double t0, double t
     return theta1 - theta0;
 }
 
+/**
+ * @brief 计算击打点
+ * 
+ */
 bool buff_predict::WhereToAim(double theta_offset)
 {
     Eigen::Vector3d hit_point_world = {sin(theta_offset) * fan_length, (cos(theta_offset) - 1) * fan_length,0};
@@ -286,13 +316,18 @@ bool buff_predict::predict(double speed, double dist, int timestamp)
     return true;
 }
 
+void callback()
+{
+    
+    return ;
+}
+
 int main(int argc, char** argv)
 {
     setlocale(LC_ALL,"");
     ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
     ros::NodeHandle nh;
-    ros::ImageTransport it(nh);
-    ros::Subscriber image_sub = it.subscribe("buff_predict", 10, buff_predict::predict);
+    ros::Subscriber sub = nh.subscribe("buff_predict", 10, callback);
     ros::spin();
     return 0;
 }

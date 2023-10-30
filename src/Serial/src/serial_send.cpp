@@ -68,14 +68,14 @@ void TransformData(const VisionData &data)
 int main(int argc, char** argv)
 {
   setlocale(LC_ALL,"");
-  ros::init(argc, argv, "serial_send"); // ROS初始化 设置节点名称 
+  ros::init(argc, argv, "serial_send"); // ROS初始化 设置节点名称
   c_board number4; // 实例化一个对象
 
   ros::Rate loop_rate(100); // 发布频率为100Hz
   while (ros::ok())
   {
-    if (number4.Get_serial_Data() == true)
-        number4.pub_serial_receiver();
+    // if (number4.Get_serial_Data() == true)
+    //     number4.pub_serial_receiver();
     
     ros::spinOnce(); 
     loop_rate.sleep();

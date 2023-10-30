@@ -10,7 +10,12 @@ project(PnP)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
+  rm_msgs
 )
+set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
+find_package(OpenCV 4.5.0 REQUIRED)
+find_package(Eigen3 REQUIRED)
+
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -115,8 +120,10 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -133,6 +140,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/PnP_node.cpp)
+add_executable(buff_PnP src/buff_PnP.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -148,6 +156,9 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(buff_PnP
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
+)
 
 #############
 ## Install ##

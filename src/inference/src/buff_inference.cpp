@@ -291,7 +291,12 @@ void buff_infer::model_init()
     moutput = as<MemoryBlob>(output_blob);
 }
 
-void buff_infer::inference(Mat &img)
+/**
+ * @brief 模型推理
+ * 
+ * @param img 原始图像
+*/
+void buff_infer::infer(Mat &img, std::vector<Point2f> &points)
 {
     cv::Mat pr_img = scaledResize(img,transfrom_matrix);
     cv::Mat pre, pre_split[3];
@@ -333,8 +338,17 @@ void buff_infer::inference(Mat &img)
                 pts_final[i].x = pts_final[i].x / (N / 5);
                 pts_final[i].y = pts_final[i].y / (N / 5);
                 landmark.push_back(pts_final[i]);
+                points.push_back(pts_final[i]);
             }
             drawPred(img, landmark);
+            ros::NodeHandle nh;
+            ros::Publisher pub = nh.advertise<rm_msgs::buff_infer_PnP>("infer_PnP", 10);
+            rm_msgs::buff_infer_PnP Omsg;
+            for(int i = 0; i < 5; i++){
+                Omsg.Points[i * 2] = points[i].x;
+                Omsg.Points[i * 2 + 1] = points[i].y;
+            }
+            pub.publish(Omsg);
         }
     }
     return ;
@@ -343,9 +357,11 @@ void buff_infer::inference(Mat &img)
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     cv::Mat img = cv_bridge::toCvShare(msg, "bgr8")->image;
-    infer.inference(img);
+    std::vector<Point2f> points;
+    infer.infer(img, points);
     cv::imshow("IMG", img);
     cv::waitKey(1);
+    return ;
 }
 
 int main(int argc, char** argv)

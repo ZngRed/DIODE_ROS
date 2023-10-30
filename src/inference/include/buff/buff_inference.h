@@ -3,6 +3,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <opencv2/opencv.hpp>
+#include <rm_msgs/buff_infer_PnP.h>
 
 #include <inference_engine.hpp>
 #include <opencv2/dnn/dnn.hpp>
@@ -59,5 +60,5 @@ public:
     ~buff_infer();
 
     void model_init();
-    void inference(Mat &img);
+    void infer(Mat &img, std::vector<Point2f> &points);
 };
