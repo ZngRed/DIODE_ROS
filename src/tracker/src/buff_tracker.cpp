@@ -1,19 +1,14 @@
 #include <buff/buff_tracker.h>
 
 // class buff
-const int max_lost_cnt = 4;//最大丢失目标帧数
 const int max_v = 4;       //最大旋转速度(rad/s)
 const int max_delta_t = 100; //使用同一预测器的最大时间间隔(ms)
-const double fan_length = 0.7; //大符臂长(R字中心至装甲板中心)
-const double no_crop_thres = 2e-3;      //禁用ROI裁剪的装甲板占图像面积最大面积比值
 bool is_last_target_exists;
 int lost_cnt;
-double last_target_area;
-double last_bullet_speed;
-Point2i last_roi_center;
-Point2i roi_offset;
-Size2d input_size;
 
+int mode;
+
+Eigen::Matrix3d rmat_imu = Eigen::Matrix3d::Identity();
 Fan last_fan;
 std::vector<Fan> fans;
 std::vector<FanTracker> trackers;
@@ -229,8 +224,27 @@ void callback_track(const rm_msgs::B_infer_track &Imsg)
     // }
     mean_rotate_speed = rotate_speed_sum / avail_tracker_cnt;
     mean_r_center = r_center_sum / avail_tracker_cnt;
+    Eigen::Matrix3d last_fan_rmat_transpose = last_fan.rmat.transpose();
     //pub
-
+    rm_msgs::B_track_predict Omsg;
+    Omsg.mode = mode;
+    Omsg.mean_rotate_speed = mean_rotate_speed;
+    Omsg.mean_r_center_norm = mean_r_center.norm();
+    Omsg.src_timestamp = Imsg.src_timestamp;
+    Omsg.target_armor3d_world.x = target.armor3d_world[0];
+    Omsg.target_armor3d_world.y = target.armor3d_world[1];
+    Omsg.target_armor3d_world.z = target.armor3d_world[2];
+    Omsg.target_centerR3d_world.x = target.centerR3d_world[0];
+    Omsg.target_centerR3d_world.y = target.centerR3d_world[1];
+    Omsg.target_centerR3d_world.z = target.centerR3d_world[2];
+    for(int i = 0; i < 9; i++){
+        Omsg.rmat_imu[i] = rmat_imu(i);
+        Omsg.target_rmat[i] = target.rmat(i);
+        Omsg.last_fan_rmat_transpose[i] = last_fan_rmat_transpose(i);
+    }
+    ros::NodeHandle nh;
+    pub = nh.advertise<rm_msgs::B_track_predict>("B_track_predict", 10);
+    pub.publish(Omsg);
     //update
     last_fan = target;
     return ;
@@ -238,7 +252,6 @@ void callback_track(const rm_msgs::B_infer_track &Imsg)
 
 void callback_fan(const rm_msgs::B_infer_fan &Imsg)
 {
-    Eigen::Matrix3d rmat_imu = Eigen::Matrix3d::Identity();
     Fan fan;
     fan.id = Imsg.cls;
     fan.color = Imsg.color;

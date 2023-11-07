@@ -1,5 +1,17 @@
 #include <buff/buff_inference.h>
 
+// class buff
+const int max_lost_cnt = 4;//最大丢失目标帧数
+const double no_crop_thres = 2e-3;      //禁用ROI裁剪的装甲板占图像面积最大面积比值
+bool is_last_target_exists;
+int lost_cnt;
+int last_timestamp;
+double last_target_area;
+double last_bullet_speed;
+Point2i last_roi_center;
+Point2i roi_offset;
+Size2d input_size;
+
 ros::Publisher pub;
 rm_msgs::B_infer_fan Omsg_fan;
 rm_msgs::B_infer_track Omsg_track;
@@ -258,13 +270,8 @@ static void decodeOutputs(const float* prob, std::vector<BuffObject>& objects,
 
 void drawPred(Mat& frame, std::vector<Point2f> landmark)   // Draw the predicted bounding box
 {
-    // cout<<"KKK"<<endl;
-    // circle(frame, Point(0, 0), 5, Scalar(255, 255, 0), -1);
-    // circle(frame, Point(416, 416), 5, Scalar(255, 255, 0), -1);
-    //画出扇叶五点、扇叶中心、能量机关中心
-    // cout<<landmark.size()<<endl;
-    for (int i = 0; i < 5; i++)
-    {
+    //画出扇叶五点、能量机关中心
+    for (int i = 0; i < 5; i++){
       circle(frame, Point(landmark[i].x, landmark[i].y), 5, Scalar(0, 255, 0), -1);
     }
 }
@@ -406,18 +413,15 @@ void buff_infer::infer(Mat &img, std::vector<Point2f> &points)
  */
 Point2i buff_infer::cropImageByROI(Mat &img)
 {
-    if (!is_last_target_exists)
-    {
+    if (!is_last_target_exists){
         //当丢失目标帧数过多或lost_cnt为初值
-        if (lost_cnt > max_lost_cnt || lost_cnt == 0)
-        {
+        if (lost_cnt > max_lost_cnt || lost_cnt == 0){
             return Point2i(0,0);
         }
     }
     //若目标大小大于阈值
     // cout<<last_target_area / img.size().area()<<endl;
-    if ((last_target_area / img.size().area()) > no_crop_thres)
-    {
+    if ((last_target_area / img.size().area()) > no_crop_thres){
         return Point2i(0,0);
     }
     //处理X越界
@@ -430,7 +434,6 @@ Point2i buff_infer::cropImageByROI(Mat &img)
         last_roi_center.y = input_size.height / 2;
     else if (last_roi_center.y > (img.size().height - input_size.height / 2))
         last_roi_center.y = img.size().height - input_size.height / 2;
-
     //左上角顶点
     auto offset = last_roi_center - Point2i(input_size.width / 2, input_size.height / 2);
     Rect roi_rect = Rect(offset, input_size);
@@ -442,7 +445,7 @@ Point2i buff_infer::cropImageByROI(Mat &img)
 void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 {
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
-    infer.roi_offset = infer.cropImageByROI(img);
+    roi_offset = infer.cropImageByROI(img);
     std::vector<Point2f> points;
     infer.infer(img, points);
     cv::imshow("IMG", img);
@@ -452,7 +455,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 
 void callback_timestamp(const std_msgs::Int8 &Imsg)
 {
-    infer.last_timestamp = Imsg.data;
+    last_timestamp = Imsg.data;
     return ;
 }
 

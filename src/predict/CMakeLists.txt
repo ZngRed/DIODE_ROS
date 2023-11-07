@@ -9,7 +9,8 @@ project(predict)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
-  # std_msgs
+  cv_bridge
+  image_transport
   rm_msgs
   tools
 )

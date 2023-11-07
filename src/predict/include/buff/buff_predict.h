@@ -2,6 +2,9 @@
 
 #include <ros/ros.h>
 #include <ros/console.h>
+#include <sensor_msgs/PointCloud.h>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 #include <rm_msgs/B_track_predict.h>
 #include <tools/coordsolver.h>
 
@@ -17,7 +20,6 @@
 #include <opencv2/opencv.hpp>
 #include <yaml-cpp/yaml.h>
 
-// #include "../../debug.h"
 // #include "../../filter/particle_filter.h"
 
 namespace plt = matplotlibcpp;

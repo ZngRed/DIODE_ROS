@@ -1,11 +1,14 @@
 <launch>
-
-    <node pkg="img_pub" type="Using_Video" name="Using_Video"/>
+    <!-- <node pkg="img_pub" type="DaHengCamera" name="DaHengCamera"/> -->
 
     <!-- <node pkg="img_pub" type="USBCamera" name="USBCamera"/> -->
+
+    <node pkg="img_pub" type="Using_Video" name="Using_Video"/>
 
     <node pkg="inference" type="buff_inference" name="buff_inference"/>
 
     <node pkg="tracker" type="buff_tracker" name="buff_tracker"/>
+
+    <!-- <node pkg="predict" type="buff_predict" name="buff_predict"/> -->
 
 </launch>
