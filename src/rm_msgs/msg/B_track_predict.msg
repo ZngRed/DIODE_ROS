@@ -1,4 +1,8 @@
 int8 mode
 float64 mean_rotate_speed
-# Vector3 mean_r_center
+float64 mean_r_center_norm
 int8 src_timestamp
+sensor_msgs/PointCloud rmat_imu
+sensor_msgs/PointCloud target_rmat
+geometry_msgs/Vector3 target_armor3d_world
+geometry_msgs/Vector3 target_centerR3d_world

@@ -388,7 +388,14 @@ double BuffPredictor::evalMAPE(double params[4])
 
 void callback_predict(const rm_msgs::B_track_predict &Imsg)
 {
+    Eigen::Matrix3d rmat_imu;
+    Eigen::Matrix3d target_rmat;
+    Eigen::Matrix3d last_fan_rmat_transpose;
+    Eigen::Vector3d target_armor3d_world;
+    Eigen::Vector3d target_centerR3d_world;
     VisionData data;
+
+
     double theta_offset = 0;
     ///------------------------进行预测----------------------------
     // predictor.mode = 1;
@@ -400,7 +407,7 @@ void callback_predict(const rm_msgs::B_track_predict &Imsg)
         predictor.mode = 1;
     // cout<<src.mode<<":"<<predictor.mode<<endl;
     // cout<<mean_rotate_speed<<endl;
-    if (!predictor.predict(Imsg.mean_rotate_speed, Imsg.mean_r_center.norm(), Imsg.src_timestamp, theta_offset))
+    if (!predictor.predict(Imsg.mean_rotate_speed, Imsg.mean_r_center_norm, Imsg.src_timestamp, theta_offset))
     {
 #ifdef SHOW_ALL_FANS
         for (auto fan : fans)
@@ -443,19 +450,19 @@ void callback_predict(const rm_msgs::B_track_predict &Imsg)
     // Eigen::Vector3d euler_rad = target.euler;
     // Eigen::Vector3d euler_rad = target.euler;
     //Pc = R * Pw + T
-    hit_point_world = (target.rmat * hit_point_world) + target.armor3d_world;
-    hit_point_cam = coordsolver.worldToCam(hit_point_world, Imsg.rmat_imu);
-    auto r_center_cam = coordsolver.worldToCam(target.centerR3d_world, Imsg.rmat_imu);
+    hit_point_world = (target_rmat * hit_point_world) + target_armor3d_world;
+    hit_point_cam = coordsolver.worldToCam(hit_point_world, rmat_imu);
+    auto r_center_cam = coordsolver.worldToCam(target_centerR3d_world, rmat_imu);
     // auto r_center_cam = coordsolver.worldToCam(mean_r_center, rmat_imu);
     auto center2d_src = coordsolver.reproject(r_center_cam);
     auto target2d = coordsolver.reproject(hit_point_cam);
 
-    auto angle = coordsolver.getAngle(hit_point_cam, Imsg.rmat_imu);
+    auto angle = coordsolver.getAngle(hit_point_cam, rmat_imu);
 
     //-----------------判断扇叶是否发生切换-------------------------
     bool is_switched = false;
     auto delta_t = Imsg.src_timestamp - last_timestamp;
-    auto relative_rmat = last_fan.rmat.transpose() * target.rmat;
+    auto relative_rmat = last_fan_rmat_transpose * target_rmat;
     //TODO:使用点乘判断旋转方向
     auto angle_axisd = Eigen::AngleAxisd(relative_rmat);
     // sign = ((*fan).centerR3d_world.dot(angle_axisd.axis()) > 0 ) ? 1 : -1;
