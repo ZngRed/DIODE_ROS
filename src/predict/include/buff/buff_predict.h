@@ -1,6 +1,11 @@
-#include <ros/ros.h>
-#include <iostream>
+# pragma once
 
+#include <ros/ros.h>
+#include <ros/console.h>
+#include <rm_msgs/B_track_predict.h>
+#include <tools/coordsolver.h>
+
+#include <iostream>
 #include <ctime>
 #include <future>
 #include <random>
@@ -12,11 +17,16 @@
 #include <opencv2/opencv.hpp>
 #include <yaml-cpp/yaml.h>
 
+// #include "../../debug.h"
+// #include "../../filter/particle_filter.h"
+
+namespace plt = matplotlibcpp;
 using namespace std;
 using namespace cv;
 using namespace plt;
 
-class buff_predict
+// const string pf_path = "../params/filter/filter_param.yaml";
+class BuffPredictor
 {
 private:
     struct CURVE_FITTING_COST
@@ -76,16 +86,17 @@ private:
     const int delay_small = 175;                                                  //小符发弹延迟
     const int delay_big = 100;                                              //大符发弹延迟
     const int window_size = 2;                                              //滑动窗口大小
-    const float fan_length = 0.7;
 
 public:
     TargetInfo last_target;                                                  //最后目标
+    // ParticleFilter pf;
+    // ParticleFilter pf_param_loader;
     int mode;                                                               //预测器模式，0为小符，1为大符
     int last_mode;
     bool is_params_confirmed;
 
-    buff_predict();
-    ~buff_predict();
+    BuffPredictor();
+    ~BuffPredictor();
     bool predict(double speed, double dist, int timestamp, double &result);
     double calcAimingAngleOffset(double params[4], double t0, double t1, int mode);
     double shiftWindowFilter(int start_idx);

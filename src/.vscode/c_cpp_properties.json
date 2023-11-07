@@ -6,6 +6,7 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
+        "/home/dhu/intel/openvino_2021/inference_engine/include/**"
         "/opt/ros/noetic/include/**",
         "/home/dhu/catkin_ws/src/ssr_pkg/include/**",
         "/usr/include/**"

@@ -6,6 +6,6 @@
 
     <node pkg="inference" type="buff_inference" name="buff_inference"/>
 
-    <node pkg="PnP" type="buff_PnP" name="buff_PnP"/>
+    <node pkg="tracker" type="buff_tracker" name="buff_tracker"/>
 
 </launch>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(img_pub)
+project(tools)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -9,16 +9,11 @@ project(img_pub)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
-  std_msgs
-  sensor_msgs
-  cv_bridge
-  image_transport
-  # rm_msgs
 )
-# file(GLOB_RECURSE OLD_OPENCV "/usr/lib/aarch64-linux-gnu/libopencv*")
-# list(REMOVE_ITEM catkin_LIBRARIES ${OLD_OPENCV})
 set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
 find_package(OpenCV 4.5.0 REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -77,7 +72,7 @@ find_package(OpenCV 4.5.0 REQUIRED)
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
+#   std_msgs
 # )
 
 ################################################
@@ -110,9 +105,9 @@ find_package(OpenCV 4.5.0 REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES img_pub
-#  CATKIN_DEPENDS roscpp std_msgs
+ INCLUDE_DIRS include
+#  LIBRARIES tools
+ CATKIN_DEPENDS roscpp
 #  DEPENDS system_lib
 )
 
@@ -126,12 +121,16 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/img_pub.cpp
+#   src/${PROJECT_NAME}/tools.cpp
 # )
+add_library(coordsolver
+  src/coordsolver.cpp src/general.cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -141,10 +140,8 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/img_pub_node.cpp)
-add_executable(DaHengCamera src/DaHengCamera.cpp)
-add_executable(USBCamera src/USBCamera.cpp)
-add_executable(Using_Video src/Using_Video.cpp)
+# add_executable(${PROJECT_NAME}_node src/tools_node.cpp)
+# add_executable(coordsolver src/coordsolver.cpp src/general.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -160,15 +157,10 @@ add_executable(Using_Video src/Using_Video.cpp)
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(DaHengCamera
-  gxiapi ${catkin_LIBRARIES}
+target_link_libraries(coordsolver
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
 )
-target_link_libraries(USBCamera
-  ${catkin_LIBRARIES}
-)
-target_link_libraries(Using_Video
-  ${catkin_LIBRARIES}
-)
+
 
 #############
 ## Install ##
@@ -217,7 +209,7 @@ target_link_libraries(Using_Video
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_img_pub.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_tools.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

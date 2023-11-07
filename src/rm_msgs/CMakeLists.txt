@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  geometry_msgs
+  sensor_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -52,7 +54,9 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   serial_receiver.msg
-  buff_infer_PnP.msg
+  B_infer_fan.msg
+  B_infer_track.msg
+  B_track_predict.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -73,6 +77,8 @@ add_message_files(
 generate_messages(
   DEPENDENCIES
   std_msgs
+  geometry_msgs
+  sensor_msgs
 )
 
 ################################################
@@ -107,7 +113,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES rm_msg
- CATKIN_DEPENDS message_generation message_runtime roscpp rospy std_msgs
+  CATKIN_DEPENDS message_generation message_runtime roscpp rospy std_msgs geometry_msgs sensor_msgs
 #  DEPENDS system_lib
 )
 

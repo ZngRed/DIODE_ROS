@@ -9,8 +9,15 @@ project(predict)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
-  std_msgs
+  # std_msgs
+  rm_msgs
+  tools
 )
+set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
+find_package(OpenCV 4.5.0 REQUIRED)
+find_package(Ceres REQUIRED COMPONENTS EigenSparse)
+find_package(Eigen3 REQUIRED)
+find_package(matplotlib_cpp REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -115,8 +122,9 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -133,6 +141,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/predict_node.cpp)
+add_executable(buff_predict src/buff_predict.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -148,6 +157,9 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(buff_predict
+  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
+)
 
 #############
 ## Install ##
