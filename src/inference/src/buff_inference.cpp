@@ -5,14 +5,15 @@ const int max_lost_cnt = 4;//最大丢失目标帧数
 const double no_crop_thres = 2e-3;      //禁用ROI裁剪的装甲板占图像面积最大面积比值
 bool is_last_target_exists;
 int lost_cnt;
-int last_timestamp;
+int src_timestamp;
 double last_target_area;
 double last_bullet_speed;
 Point2i last_roi_center;
 Point2i roi_offset;
 Size2d input_size;
 
-ros::Publisher pub;
+ros::Publisher pub_fan;
+ros::Publisher pub_track;
 rm_msgs::B_infer_fan Omsg_fan;
 rm_msgs::B_infer_track Omsg_track;
 
@@ -28,6 +29,43 @@ static constexpr float BBOX_CONF_THRESH = 0.6;
 static constexpr float MERGE_CONF_ERROR = 0.15;
 static constexpr float MERGE_MIN_IOU = 0.2;
 
+/**
+ * @brief 根据上次装甲板位置截取ROI
+ * 
+ * @param img 所需处理的图像
+ * @return ** Point2i ROI中心点
+ */
+Point2i cropImageByROI(Mat &img)
+{
+    if (!is_last_target_exists){
+        //当丢失目标帧数过多或lost_cnt为初值
+        if (lost_cnt > max_lost_cnt || lost_cnt == 0){
+            return Point2i(0,0);
+        }
+    }
+    //若目标大小大于阈值
+    // cout<<last_target_area / img.size().area()<<endl;
+    if ((last_target_area / img.size().area()) > no_crop_thres){
+        return Point2i(0,0);
+    }
+    //处理X越界
+    if (last_roi_center.x <= input_size.width / 2)
+        last_roi_center.x = input_size.width / 2;
+    else if (last_roi_center.x > (img.size().width - input_size.width / 2))
+        last_roi_center.x = img.size().width - input_size.width / 2;
+    //处理Y越界
+    if (last_roi_center.y <= input_size.height / 2)
+        last_roi_center.y = input_size.height / 2;
+    else if (last_roi_center.y > (img.size().height - input_size.height / 2))
+        last_roi_center.y = img.size().height - input_size.height / 2;
+    //左上角顶点
+    auto offset = last_roi_center - Point2i(input_size.width / 2, input_size.height / 2);
+    Rect roi_rect = Rect(offset, input_size);
+    img(roi_rect).copyTo(img);
+
+    return offset;
+}
+
 static inline int argmax(const float *ptr, int len) 
 {
     int max_arg = 0;
@@ -37,6 +75,14 @@ static inline int argmax(const float *ptr, int len)
     return max_arg;
 }
 
+/**
+ * @brief Resize the image using letterbox
+ * 
+ * @param img Image before resize
+ * @param transform_matrix Transform Matrix of Resize
+ * 
+ * @return Image after resize
+ */
 inline cv::Mat scaledResize(cv::Mat& img, Eigen::Matrix<float,3,3> &transform_matrix)
 {
     float r = std::min(INPUT_W / (img.cols * 1.0), INPUT_H / (img.rows * 1.0));
@@ -61,6 +107,14 @@ inline cv::Mat scaledResize(cv::Mat& img, Eigen::Matrix<float,3,3> &transform_ma
     return out;
 }
 
+/**
+ * @brief Generate grids and stride.
+ * 
+ * @param target_w Width of input.
+ * @param target_h Height of input.
+ * @param strides A vector of stride.
+ * @param grid_strides Grid stride generated in this function.
+ */
 static void generate_grids_and_stride(const int target_w, const int target_h,
                                         std::vector<int>& strides, std::vector<GridAndStride>& grid_strides)
 {
@@ -75,6 +129,14 @@ static void generate_grids_and_stride(const int target_w, const int target_h,
     }
 }
 
+/**
+ * @brief Generate Proposal
+ * 
+ * @param grid_strides Grid strides
+ * @param feat_ptr Original predition result.
+ * @param prob_threshold Confidence Threshold.
+ * @param objects Objects proposed.
+ */
 static void generateYoloxProposals(std::vector<GridAndStride> grid_strides, const float* feat_ptr,
                                     Eigen::Matrix<float,3,3> &transform_matrix,float prob_threshold,
                                     std::vector<BuffObject>& objects)
@@ -86,7 +148,7 @@ static void generateYoloxProposals(std::vector<GridAndStride> grid_strides, cons
         const int grid0 = grid_strides[anchor_idx].grid0;
         const int grid1 = grid_strides[anchor_idx].grid1;
         const int stride = grid_strides[anchor_idx].stride;
-	      const int basic_pos = anchor_idx * (11 + NUM_COLORS + NUM_CLASSES);
+	    const int basic_pos = anchor_idx * (11 + NUM_COLORS + NUM_CLASSES);
 
         // yolox/models/yolo_head.py decode logic
         //  outputs[..., :2] = (outputs[..., :2] + grids) * strides
@@ -121,8 +183,8 @@ static void generateYoloxProposals(std::vector<GridAndStride> grid_strides, cons
             Eigen::Matrix<float,3,5> apex_dst;
 
             apex_norm << x_1,x_2,x_3,x_4,x_5,
-                        y_1,y_2,y_3,y_4,y_5,
-                        1,1,1,1,1;
+                         y_1,y_2,y_3,y_4,y_5,
+                         1  ,1  ,1  ,1  ,1  ;
             
             apex_dst = transform_matrix * apex_norm;
 
@@ -209,7 +271,6 @@ static void nms_sorted_bboxes(std::vector<BuffObject>& faceobjects, std::vector<
     for (int i = 0; i < n; i++){
         std::vector<cv::Point2f> object_apex_tmp(faceobjects[i].apex, faceobjects[i].apex + 5);
         areas[i] = contourArea(object_apex_tmp);
-        // areas[i] = faceobjects[i].rect.area();
     }
 
     for (int i = 0; i < n; i++){
@@ -220,9 +281,6 @@ static void nms_sorted_bboxes(std::vector<BuffObject>& faceobjects, std::vector<
             BuffObject& b = faceobjects[picked[j]];
             std::vector<cv::Point2f> apex_b(b.apex, b.apex + 5);
             std::vector<cv::Point2f> apex_inter;
-            // intersection over union
-            // float inter_area = intersection_area(a, b);
-            // float union_area = areas[i] + areas[picked[j]] - inter_area;
             //TODO:此处耗时较长，大约1ms，可以尝试使用其他方法计算IOU与多边形面积
             float inter_area = intersectConvexConvex(apex_a,apex_b,apex_inter);
             float union_area = areas[i] + areas[picked[j]] - inter_area;
@@ -268,11 +326,11 @@ static void decodeOutputs(const float* prob, std::vector<BuffObject>& objects,
         }
 }
 
-void drawPred(Mat& frame, std::vector<Point2f> landmark)   // Draw the predicted bounding box
+void drawPred(Mat& frame, cv::Point2f landmark[])   // Draw the predicted bounding box
 {
     //画出扇叶五点、能量机关中心
     for (int i = 0; i < 5; i++){
-      circle(frame, Point(landmark[i].x, landmark[i].y), 5, Scalar(0, 255, 0), -1);
+        circle(frame, landmark[i], 5, Scalar(0, 255, 0), -1);
     }
 }
 
@@ -287,6 +345,7 @@ buff_infer::buff_infer()
 buff_infer::~buff_infer()
 {
 }
+
 /**
  * @brief 初始化模型
 */
@@ -317,6 +376,8 @@ void buff_infer::model_init()
     // Process output
     const Blob::Ptr output_blob = infer_request.GetBlob(output_name);
     moutput = as<MemoryBlob>(output_blob);
+
+    return ;
 }
 
 /**
@@ -324,15 +385,21 @@ void buff_infer::model_init()
  * 
  * @param img 原始图像
 */
-void buff_infer::infer(Mat &img, std::vector<Point2f> &points)
+void buff_infer::infer(Mat &img)
 {
+    std::vector<BuffObject> objects;
     ros::NodeHandle nh;
 
-    cv::Mat pr_img = scaledResize(img,transfrom_matrix);
+    // pub = nh.advertise<rm_msgs::B_infer_fan>("B_infer_fan", 100);
+    // std::cout<<"PPPublished!"<<endl;
+    // pub.publish(Omsg_fan);
+
+    cv::Mat pr_img = scaledResize(img, transfrom_matrix);
+    // cv::imshow("INPUT_IMG", pr_img);
     cv::Mat pre, pre_split[3];
-    pr_img.convertTo(pre,CV_32F);
-    cv::split(pre,pre_split);
-    vector<BuffObject> objects;
+    pr_img.convertTo(pre, CV_32F);
+    cv::split(pre, pre_split);
+    
 
     Blob::Ptr imgBlob = infer_request.GetBlob(input_name);
     InferenceEngine::MemoryBlob::Ptr mblob = InferenceEngine::as<InferenceEngine::MemoryBlob>(imgBlob);
@@ -356,19 +423,21 @@ void buff_infer::infer(Mat &img, std::vector<Point2f> &points)
     int img_w = img.cols;
     int img_h = img.rows;
     decodeOutputs(net_pred, objects, transfrom_matrix, img_w, img_h);
+    std::cout << "objects:" << objects.size() <<endl;
     for (auto object = objects.begin(); object != objects.end(); ++object){
         if ((*object).pts.size() >= 10){
             auto N = (*object).pts.size();
             cv::Point2f pts_final[5];
-            std::vector<Point2f> landmark;
+            cv::Point2f landmark[5];
             for (int i = 0; i < N; i++){
                 pts_final[i % 5]+=(*object).pts[i];
             }
             for (int i = 0; i < 5; i++){
                 pts_final[i].x = pts_final[i].x / (N / 5);
                 pts_final[i].y = pts_final[i].y / (N / 5);
-                landmark.push_back(pts_final[i]);
-                points.push_back(pts_final[i]);
+                // cout<<i<<":"<<pts_final[i].x<<" "<<pts_final[i].y<<endl;
+                landmark[i].x = pts_final[i].x;
+                landmark[i].y = pts_final[i].y;
             }
             drawPred(img, landmark);
 
@@ -382,80 +451,44 @@ void buff_infer::infer(Mat &img, std::vector<Point2f> &points)
             Omsg_fan.apex_3.y = (*object).apex[3].y;
             Omsg_fan.apex_4.x = (*object).apex[4].x;
             Omsg_fan.apex_4.y = (*object).apex[4].y;
+            Omsg_fan.roi_offset.x = roi_offset.x;
+            Omsg_fan.roi_offset.y = roi_offset.y;
             Omsg_fan.cls = (*object).cls;
             Omsg_fan.color = (*object).color;
             Omsg_fan.prob = (*object).prob;
-            pub = nh.advertise<rm_msgs::B_infer_fan>("B_infer_fan", 10);
-            pub.publish(Omsg_fan);
+            pub_fan = nh.advertise<rm_msgs::B_infer_fan>("B_infer_fan", 100);
+            pub_fan.publish(Omsg_fan);
         }
     }
-    Omsg_track.is_last_target_exists = is_last_target_exists;
-    Omsg_track.lost_cnt = lost_cnt;
-    Omsg_track.last_timestamp = last_timestamp;
-    Omsg_track.last_target_area = last_target_area;
-    Omsg_track.last_bullet_speed = last_bullet_speed;
-    Omsg_track.last_roi_center.x = last_roi_center.x;
-    Omsg_track.last_roi_center.y = last_roi_center.y;
-    Omsg_track.roi_offset.x = roi_offset.x;
-    Omsg_track.roi_offset.y = roi_offset.y;
-    Omsg_track.input_size = static_cast<int>(input_size.width);
-    pub = nh.advertise<rm_msgs::B_infer_track>("B_infer_track", 10);
-    pub.publish(Omsg_track);
-
+    // pub
+    Omsg_track.src_timestamp = src_timestamp;
+    pub_track = nh.advertise<rm_msgs::B_infer_track>("B_infer_track", 100);
+    pub_track.publish(Omsg_track);
     return ;
-}
-
-/**
- * @brief 根据上次装甲板位置截取ROI
- * 
- * @param img 所需处理的图像
- * @return ** Point2i ROI中心点
- */
-Point2i buff_infer::cropImageByROI(Mat &img)
-{
-    if (!is_last_target_exists){
-        //当丢失目标帧数过多或lost_cnt为初值
-        if (lost_cnt > max_lost_cnt || lost_cnt == 0){
-            return Point2i(0,0);
-        }
-    }
-    //若目标大小大于阈值
-    // cout<<last_target_area / img.size().area()<<endl;
-    if ((last_target_area / img.size().area()) > no_crop_thres){
-        return Point2i(0,0);
-    }
-    //处理X越界
-    if (last_roi_center.x <= input_size.width / 2)
-        last_roi_center.x = input_size.width / 2;
-    else if (last_roi_center.x > (img.size().width - input_size.width / 2))
-        last_roi_center.x = img.size().width - input_size.width / 2;
-    //处理Y越界
-    if (last_roi_center.y <= input_size.height / 2)
-        last_roi_center.y = input_size.height / 2;
-    else if (last_roi_center.y > (img.size().height - input_size.height / 2))
-        last_roi_center.y = img.size().height - input_size.height / 2;
-    //左上角顶点
-    auto offset = last_roi_center - Point2i(input_size.width / 2, input_size.height / 2);
-    Rect roi_rect = Rect(offset, input_size);
-    img(roi_rect).copyTo(img);
-
-    return offset;
 }
 
 void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 {
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
-    roi_offset = infer.cropImageByROI(img);
-    std::vector<Point2f> points;
-    infer.infer(img, points);
+    roi_offset = cropImageByROI(img);
+    infer.infer(img);
     cv::imshow("IMG", img);
     cv::waitKey(1);
     return ;
 }
 
-void callback_timestamp(const std_msgs::Int8 &Imsg)
+void callback_timestamp(const std_msgs::Int64::ConstPtr &Imsg)
 {
-    last_timestamp = Imsg.data;
+    src_timestamp = Imsg->data;
+    // cout<<"TIMESTAMP:  "<<last_timestamp<<endl;
+    return ;
+}
+
+void callback_B_update(const rm_msgs::B_update::ConstPtr& Imsg)
+{
+    last_roi_center.x = Imsg->last_roi_center.x;
+    last_roi_center.y = Imsg->last_roi_center.y;
+    is_last_target_exists = Imsg->is_last_target_exists;
     return ;
 }
 
@@ -465,7 +498,9 @@ int main(int argc, char** argv)
     cv::namedWindow("IMG");
     ros::init(argc, argv, "buff_inference"); // 初始化ROS节点
     ros::NodeHandle nh;
+    ros::Rate loop_rate(30);
     image_transport::ImageTransport it(nh);
+    ros::Subscriber sub_update = nh.subscribe("B_update", 10, callback_B_update);
     ros::Subscriber sub_timestamp = nh.subscribe("src_timestamp", 10, callback_timestamp);
     image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
     ros::spin();

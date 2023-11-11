@@ -4,12 +4,13 @@
 const int max_v = 4;       //最大旋转速度(rad/s)
 const double fan_length = 0.7; //大符臂长(R字中心至装甲板中心)
 bool is_last_target_exists;
-int lost_cnt;
 int last_timestamp;
 Point2i last_roi_center;
 
 CoordSolver coordsolver;
 BuffPredictor predictor;
+rm_msgs::B_update Omsg;
+ros::Publisher pub;
 
 // drawpred
 cv::Point2f center2d_src;
@@ -231,27 +232,6 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
     result = calcAimingAngleOffset(params, timespan / 1e3, time_estimate / 1e3, mode);
     last_target = target;
 
-#ifdef DRAW_PREDICT
-    if (target.timestamp % 10 == 0)
-    {
-        std::vector<double> plt_time;
-        std::vector<double> plt_speed;
-        std::vector<double> plt_fitted;
-        for (auto target_info : history_info)
-        {
-            auto t = (float)(target_info.timestamp) / 1e3;
-            plt_time.push_back(t);
-            plt_speed.push_back(target_info.speed);
-            plt_fitted.push_back(params[0] * sin (params[1] * t + params[2]) + params[3]);
-        }
-        plt::clf();
-        plt::plot(plt_time, plt_speed,"bx");
-        plt::plot(plt_time, plt_fitted,"r-");
-        plt::pause(0.001);
-
-    }
-    // plt::show();
-#endif //DRAW_PREDICT
     return true;
 }
 /**
@@ -380,7 +360,7 @@ double BuffPredictor::evalMAPE(double params[4])
     return mape;
 }
 
-void callback_predict(const rm_msgs::B_track_predict &Imsg)
+void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
 {
     Eigen::Matrix3d rmat_imu;
     Eigen::Matrix3d target_rmat;
@@ -388,62 +368,44 @@ void callback_predict(const rm_msgs::B_track_predict &Imsg)
     Eigen::Vector3d target_armor3d_world;
     Eigen::Vector3d target_centerR3d_world;
     VisionData data;
-    target_armor3d_world[0] = Imsg.target_armor3d_world.x;
-    target_armor3d_world[1] = Imsg.target_armor3d_world.y;
-    target_armor3d_world[2] = Imsg.target_armor3d_world.z;
-    target_centerR3d_world[0] = Imsg.target_centerR3d_world.x;
-    target_centerR3d_world[1] = Imsg.target_centerR3d_world.y;
-    target_centerR3d_world[2] = Imsg.target_centerR3d_world.z;
-    for(int i = 0; i < 9; i++){
-        rmat_imu << Imsg.rmat_imu[i];
-        target_rmat << Imsg.target_rmat[i];
-        last_fan_rmat_transpose << Imsg.last_fan_rmat_transpose[i];
-    }
-    
+    target_armor3d_world[0] = Imsg->target_armor3d_world.x;
+    target_armor3d_world[1] = Imsg->target_armor3d_world.y;
+    target_armor3d_world[2] = Imsg->target_armor3d_world.z;
+    target_centerR3d_world[0] = Imsg->target_centerR3d_world.x;
+    target_centerR3d_world[1] = Imsg->target_centerR3d_world.y;
+    target_centerR3d_world[2] = Imsg->target_centerR3d_world.z;
+    rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[1],Imsg->rmat_imu[2],
+                Imsg->rmat_imu[3],Imsg->rmat_imu[4],Imsg->rmat_imu[5],
+                Imsg->rmat_imu[6],Imsg->rmat_imu[7],Imsg->rmat_imu[8];
+    target_rmat <<  Imsg->target_rmat[0],Imsg->target_rmat[1],Imsg->target_rmat[2],
+                    Imsg->target_rmat[3],Imsg->target_rmat[4],Imsg->target_rmat[5],
+                    Imsg->target_rmat[6],Imsg->target_rmat[7],Imsg->target_rmat[8];
+    last_fan_rmat_transpose <<  Imsg->last_fan_rmat_transpose[0],Imsg->last_fan_rmat_transpose[1],Imsg->last_fan_rmat_transpose[2],
+                                Imsg->last_fan_rmat_transpose[3],Imsg->last_fan_rmat_transpose[4],Imsg->last_fan_rmat_transpose[5],
+                                Imsg->last_fan_rmat_transpose[6],Imsg->last_fan_rmat_transpose[7],Imsg->last_fan_rmat_transpose[8];
     double theta_offset = 0;
     ///------------------------进行预测----------------------------
-    if (Imsg.mode == 3) // 进入小能量机关识别模式
+    if (Imsg->mode == 3) // 进入小能量机关识别模式
         predictor.mode = 0;
-    else if (Imsg.mode == 4) // 进入大能量机关识别模式
+    else if (Imsg->mode == 4) // 进入大能量机关识别模式
         predictor.mode = 1;
     // cout<<src.mode<<":"<<predictor.mode<<endl;
     // cout<<mean_rotate_speed<<endl;
-    if (!predictor.predict(Imsg.mean_rotate_speed, Imsg.mean_r_center_norm, Imsg.src_timestamp, theta_offset))
+    if (!predictor.predict(Imsg->mean_rotate_speed, Imsg->mean_r_center_norm, Imsg->src_timestamp, theta_offset))
     {
-        // SHOW_ALL_FANS
-        // for (auto fan : fans)
-        // {
-        //     putText(src.img, fmt::format("{:.2f}", fan.conf),fan.apex2d[4],FONT_HERSHEY_SIMPLEX, 1, {0, 255, 0}, 2);
-        //     if (fan.color == 0)
-        //         putText(src.img, fmt::format("{}",fan.key), fan.apex2d[0], FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-        //     if (fan.color == 1)
-        //         putText(src.img, fmt::format("{}",fan.key), fan.apex2d[0], FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-        //     for(int i = 0; i < 5; i++)
-        //         line(src.img, fan.apex2d[i % 5], fan.apex2d[(i + 1) % 5], Scalar(0,255,0), 1);
-        //     auto fan_armor_center = coordsolver.reproject(fan.armor3d_cam);
-        //     circle(src.img, fan_armor_center, 4, {0, 0, 255}, 2);
-        // }
-
         data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
         return ;
     }
-
     ///------------------------计算击打点----------------------------
     //将角度转化至[-PI,PI范围内]
-    // cout<<theta_offset<<endl;
     // theta_offset = rangedAngleRad(theta_offset);
-    // cout<<theta_offset<<endl;
     //由offset生成欧拉角和旋转矩阵
     Eigen::Vector3d hit_point_world = {sin(theta_offset) * fan_length, (cos(theta_offset) - 1) * fan_length,0};
-    // cout<<hit_point_world<<endl;
     Eigen::Vector3d hit_point_cam = {0,0,0};
-    // Eigen::Vector3d euler_rad = target.euler;
-    // Eigen::Vector3d euler_rad = target.euler;
     //Pc = R * Pw + T
     hit_point_world = (target_rmat * hit_point_world) + target_armor3d_world;
     hit_point_cam = coordsolver.worldToCam(hit_point_world, rmat_imu);
     Eigen::Vector3d r_center_cam = coordsolver.worldToCam(target_centerR3d_world, rmat_imu);
-    // auto r_center_cam = coordsolver.worldToCam(mean_r_center, rmat_imu);
     center2d_src = coordsolver.reproject(r_center_cam);
     auto target2d = coordsolver.reproject(hit_point_cam);
 
@@ -451,19 +413,18 @@ void callback_predict(const rm_msgs::B_track_predict &Imsg)
 
     //-----------------判断扇叶是否发生切换-------------------------
     bool is_switched = false;
-    auto delta_t = Imsg.src_timestamp - last_timestamp;
+    auto delta_t = Imsg->src_timestamp - last_timestamp;
     auto relative_rmat = last_fan_rmat_transpose * target_rmat;
     //TODO:使用点乘判断旋转方向
     auto angle_axisd = Eigen::AngleAxisd(relative_rmat);
-    // sign = ((*fan).centerR3d_world.dot(angle_axisd.axis()) > 0 ) ? 1 : -1;
-    auto rotate_speed = (angle_axisd.angle()) / delta_t * 1e3;//计算角速度(rad/s)
+    auto rotate_speed = (angle_axisd.angle()) / delta_t * 1e3; // 计算角速度(rad/s)
     if (abs(rotate_speed) > max_v)
         is_switched = true;
 
-    lost_cnt = 0;
+    // lost_cnt = 0;
     last_roi_center = center2d_src;
-    last_timestamp = Imsg.src_timestamp;
-    is_last_target_exists = true;
+    last_timestamp = Imsg->src_timestamp;
+    // is_last_target_exists = true;
 
     //若预测出错取消本次数据发送
     if (isnan(angle[0]) || isnan(angle[1]))
@@ -478,21 +439,15 @@ void callback_predict(const rm_msgs::B_track_predict &Imsg)
     // double dr_infer_ms = std::chrono::duration<double,std::milli>(time_infer - time_crop).count();
     // double dr_predict_ms = std::chrono::duration<double,std::milli>(time_predict - time_infer).count();
 
-    // SHOW_ALL_FANS
-    // for (auto fan : fans)
-    // {
-    //     putText(src.img, fmt::format("{:.2f}", fan.conf),fan.apex2d[4],FONT_HERSHEY_SIMPLEX, 1, {0, 255, 0}, 2);
-    //     if (fan.color == 0)
-    //         putText(src.img, fmt::format("{}",fan.key), fan.apex2d[0], FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-    //     if (fan.color == 1)
-    //         putText(src.img, fmt::format("{}",fan.key), fan.apex2d[0], FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-    //     for(int i = 0; i < 5; i++)
-    //         line(src.img, fan.apex2d[i % 5], fan.apex2d[(i + 1) % 5], Scalar(0,255,0), 1);
-    //     auto fan_armor_center = coordsolver.reproject(fan.armor3d_cam);
-    //     circle(src.img, fan_armor_center, 4, {0, 0, 255}, 2);
-    // }
-
     data = {(float)angle[1], (float)angle[0], (float)hit_point_cam.norm(), is_switched, 1, 1, 1};
+
+    // pub
+    Omsg.last_roi_center.x = center2d_src.x;
+    Omsg.last_roi_center.y = center2d_src.y;
+    Omsg.is_last_target_exists = Imsg->is_last_target_exists;
+    ros::NodeHandle nh;
+    pub = nh.advertise<rm_msgs::B_update>("B_update", 10);
+    pub.publish(Omsg);
     return ;
 }
 
@@ -501,8 +456,9 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
     line(img, Point2f(img.size().width / 2, 0), Point2f(img.size().width / 2, img.size().height), Scalar(0,255,0), 1);
     line(img, Point2f(0, img.size().height / 2), Point2f(img.size().width, img.size().height / 2), Scalar(0,255,0), 1);
-    circle(img, center2d_src, 5, Scalar(0, 0, 255), 2);
-    circle(img, target2d, 5, Scalar(255, 255, 255), 2);
+    std::cout << "center:" << center2d_src.x << " " << center2d_src.y << endl;
+    circle(img, center2d_src, 5, Scalar(255, 0, 255), 2);
+    // circle(img, target2d, 5, Scalar(255, 255, 255), 2);
     // putText(img, fmt::format("FPS: {}",int(1000 / dr_full_ms)), {10, 25}, FONT_HERSHEY_SIMPLEX, 1, {0,255,0});
 
     cv::imshow("IMG", img);
@@ -515,7 +471,7 @@ int main(int argc, char** argv)
     setlocale(LC_ALL,"");
     ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
     ros::NodeHandle nh;
-    ros::Subscriber sub = nh.subscribe("B_track_predict", 10, callback_predict);
+    ros::Subscriber sub = nh.subscribe("B_track_predict", 100, callback_predict);
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
     ros::spin();

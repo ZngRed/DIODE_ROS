@@ -1,9 +1,10 @@
 int8 mode
 float64 mean_rotate_speed
 float64 mean_r_center_norm
-int8 src_timestamp
+int64 src_timestamp
 geometry_msgs/Vector3 target_armor3d_world
 geometry_msgs/Vector3 target_centerR3d_world
-int8[9] rmat_imu
-int8[9] target_rmat
-int8[9] last_fan_rmat_transpose
+int64[9] rmat_imu
+int64[9] target_rmat
+int64[9] last_fan_rmat_transpose
+bool is_last_target_exists

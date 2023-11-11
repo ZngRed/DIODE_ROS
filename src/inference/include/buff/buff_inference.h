@@ -1,11 +1,12 @@
 #include <ros/ros.h>
 #include <ros/console.h>
-#include <std_msgs/Int8.h>
+#include <std_msgs/Int64.h>
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <rm_msgs/B_infer_fan.h>
 #include <rm_msgs/B_infer_track.h>
+#include <rm_msgs/B_update.h>
 
 #include <inference_engine.hpp>
 #include <opencv2/opencv.hpp>
@@ -32,7 +33,7 @@ using namespace cv;
 
 struct BuffObject
 {
-    Point2f apex[5];
+    cv::Point2f apex[5];
     cv::Rect_<float> rect;
     int cls;
     int color;
@@ -63,7 +64,6 @@ public:
     ~buff_infer();
 
     void model_init();
-    void infer(Mat &img, std::vector<Point2f> &points);
+    void infer(Mat &img);
 
-    Point2i cropImageByROI(Mat &img);
 };

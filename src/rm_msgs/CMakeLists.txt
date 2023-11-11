@@ -57,6 +57,7 @@ add_message_files(
   B_infer_fan.msg
   B_infer_track.msg
   B_track_predict.msg
+  B_update.msg
 )
 
 ## Generate services in the 'srv' folder

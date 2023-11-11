@@ -136,6 +136,7 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/Serial_node.cpp)
 add_executable(serial_receive src/serial_receive.cpp)
+# add_executable(serial_send src/serial_send.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -154,6 +155,9 @@ add_executable(serial_receive src/serial_receive.cpp)
 target_link_libraries(serial_receive
   ${catkin_LIBRARIES}
 )
+# target_link_libraries(serial_send
+#   ${catkin_LIBRARIES}
+# )
 
 #############
 ## Install ##

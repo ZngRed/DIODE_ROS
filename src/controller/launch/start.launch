@@ -9,6 +9,6 @@
 
     <node pkg="tracker" type="buff_tracker" name="buff_tracker"/>
 
-    <!-- <node pkg="predict" type="buff_predict" name="buff_predict"/> -->
+    <node pkg="predict" type="buff_predict" name="buff_predict"/>
 
 </launch>

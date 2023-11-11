@@ -6,6 +6,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <rm_msgs/B_track_predict.h>
+#include <rm_msgs/B_update.h>
 #include <tools/coordsolver.h>
 
 #include <iostream>
