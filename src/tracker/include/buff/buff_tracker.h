@@ -17,7 +17,7 @@
 using namespace cv;
 using namespace std;
 
-const string camera_param_path = "/home/dhu/Model/coord_param.yaml";
+// const string camera_param_path = "/home/dhu/Model/coord_param.yaml";
 // const string camera_name = "KE0200110075";     // 步兵（4号)
 
 struct Fan

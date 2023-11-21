@@ -137,6 +137,7 @@ include_directories(
 # add_executable(${PROJECT_NAME}_node src/Serial_node.cpp)
 add_executable(serial_receive src/serial_receive.cpp)
 # add_executable(serial_send src/serial_send.cpp)
+add_executable(Can src/Can.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -158,6 +159,9 @@ target_link_libraries(serial_receive
 # target_link_libraries(serial_send
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(Can
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##

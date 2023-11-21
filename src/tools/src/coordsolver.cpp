@@ -61,7 +61,6 @@ bool CoordSolver::loadParam(string coord_path,string param_name)
     read_vector = config[param_name]["T_ci"].as<vector<float>>();
     initMatrix(mat_ci,read_vector);
     transform_ci = mat_ci;
-
     return true;
 }
 
@@ -132,6 +131,7 @@ PnPInfo CoordSolver::pnp(const std::vector<Point2f> &points_pic, const Eigen::Ma
         // result.euler = rotationMatrixToEulerAngles(rmat_eigen_world);
         result.euler = rotationMatrixToEulerAngles(rmat_eigen_world);
         result.rmat = rmat_eigen_world;
+        // cout<<"rmat_imu:"<<endl<<rmat_imu<<endl<<"*---------------*"<<endl;
     }
     
     return result;
@@ -173,6 +173,7 @@ cv::Point2f CoordSolver::reproject(Eigen::Vector3d &xyz)
     Eigen::Matrix3d mat_intrinsic;
     cv2eigen(intrinsic, mat_intrinsic);
     //(u,v,1)^T = (1/Z) * K * (X,Y,Z)^T
+    if(xyz[2]==0) xyz<<0,1,0;
     auto result = (1.f / xyz[2]) * mat_intrinsic * (xyz);//解算前进行单位转换
     return cv::Point2f(result[0], result[1]);
 }

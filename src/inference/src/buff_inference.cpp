@@ -35,6 +35,71 @@ static constexpr float MERGE_MIN_IOU = 0.2;
  * @param img 所需处理的图像
  * @return ** Point2i ROI中心点
  */
+#ifdef USING_ROI
+Point2i Autoaim::cropImageByROI(Mat &img)
+{
+    // cout<<"lost:"<<lost_cnt<<endl;
+    //若上次不存在目标
+
+    //FIXME:自适应大小ROI截取可能存在Bug
+    auto area_ratio = last_target_area / img.size().area();
+    if (!is_last_target_exists)
+    {
+        // cout<<lost_cnt<<endl;
+        //当丢失目标帧数过多或lost_cnt为初值
+        if (lost_cnt > max_lost_cnt || lost_cnt == 0 || area_ratio == 0)
+        {
+            return Point2i(0,0);
+        }
+    }
+    //若目标大小大于阈值
+    //丢失目标帧数较小则放大ROI区域
+    // if (lost_cnt <= max_lost_cnt)
+    //     area_ratio*=(1 + lost_cnt);
+
+    if (area_ratio > no_crop_ratio)
+    {
+        return Point2i(0,0);
+    }
+    int max_expand = (img.size().height - input_size.height) / 2;
+    int expand_value = (int)((area_ratio / no_crop_ratio) * max_expand) / 32 * 32;
+    // cout<<"last:"<<last_roi_center<<endl;
+    // Size2i cropped_size = input_size;
+    Size2i cropped_size = {input_size + Size2i(expand_value, expand_value)};
+    // cout<<cropped_size<<" "<<expand_value<<endl;
+    if (cropped_size.width >= img.size().width)
+        cropped_size.width = img.size().width;
+    if (cropped_size.height >= img.size().height)
+        cropped_size.height = img.size().height;
+
+    //处理X越界
+    if (last_roi_center.x <= cropped_size.width / 2)
+        last_roi_center.x = cropped_size.width / 2;
+    if (last_roi_center.x > (img.size().width - cropped_size.width / 2))
+        last_roi_center.x = img.size().width - cropped_size.width / 2;
+    //处理Y越界
+    if (last_roi_center.y <= cropped_size.height / 2)
+        last_roi_center.y = cropped_size.height / 2;
+    if (last_roi_center.y > (img.size().height - cropped_size.height / 2))
+        last_roi_center.y = img.size().height - cropped_size.height / 2;
+    
+    //左上角顶点
+    auto offset = last_roi_center - Point2i(cropped_size.width / 2, cropped_size.height / 2);
+    // auto offset = last_roi_center - Point2i(roi_width / 2, roi_height / 2);
+    Rect roi_rect = Rect(offset, cropped_size);
+    img(roi_rect).copyTo(img);
+
+    // namedWindow("roi", img);
+    return offset;
+}
+#endif //USING_ROI
+
+/**
+ * @brief 根据上次装甲板位置截取ROI
+ * 
+ * @param img 所需处理的图像
+ * @return ** Point2i ROI中心点
+ */
 Point2i cropImageByROI(Mat &img)
 {
     if (!is_last_target_exists){
@@ -423,9 +488,10 @@ void buff_infer::infer(Mat &img)
     int img_w = img.cols;
     int img_h = img.rows;
     decodeOutputs(net_pred, objects, transfrom_matrix, img_w, img_h);
-    std::cout << "objects:" << objects.size() <<endl;
+    int available = 0;
     for (auto object = objects.begin(); object != objects.end(); ++object){
         if ((*object).pts.size() >= 10){
+            available++;
             auto N = (*object).pts.size();
             cv::Point2f pts_final[5];
             cv::Point2f landmark[5];
@@ -460,9 +526,10 @@ void buff_infer::infer(Mat &img)
             pub_fan.publish(Omsg_fan);
         }
     }
+    std::cout << "objects: " << available << "  time: " << src_timestamp <<endl;
     // pub
     Omsg_track.src_timestamp = src_timestamp;
-    pub_track = nh.advertise<rm_msgs::B_infer_track>("B_infer_track", 100);
+    pub_track = nh.advertise<rm_msgs::B_infer_track>("B_infer_track", 1);
     pub_track.publish(Omsg_track);
     return ;
 }
@@ -471,6 +538,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 {
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
     roi_offset = cropImageByROI(img);
+    cout<<roi_offset<<endl;
     infer.infer(img);
     cv::imshow("IMG", img);
     cv::waitKey(1);

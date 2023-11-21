@@ -80,11 +80,11 @@ private:
     double bullet_speed = 28;                                            
     std::deque<TargetInfo> history_info;                                    //目标队列
     const int max_timespan = 20000;                                         //最大时间跨度，大于该时间重置预测器(ms)
-    const double max_rmse = 0.4;                                               //TODO:回归函数最大Cost
+    const double max_rmse = 2;                                               //TODO:回归函数最大Cost
     const int max_v = 3;                                                  //设置最大速度,单位rad/s
     const int max_a = 8;                                                  //设置最大角加速度,单位rad/s^2
-    const int history_deque_len_cos = 250;                                  //大符全部参数拟合队列长度
-    const int history_deque_len_phase = 100;                                  //大符相位参数拟合队列长度
+    const int history_deque_len_cos = 50;                                  //大符全部参数拟合队列长度
+    const int history_deque_len_phase = 10;                                  //大符相位参数拟合队列长度
     const int history_deque_len_uniform = 100;                                  //小符转速求解队列长度
     const int delay_small = 175;                                                  //小符发弹延迟
     const int delay_big = 100;                                              //大符发弹延迟

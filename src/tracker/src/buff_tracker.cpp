@@ -5,6 +5,7 @@ const int max_v = 4;       //最大旋转速度(rad/s)
 const int max_delta_t = 10000; //使用同一预测器的最大时间间隔(ms)
 bool is_last_target_exists;
 int lost_cnt;
+int src_timestamp;
 
 int mode = 4;
 
@@ -20,14 +21,17 @@ bool chooseTarget(vector<Fan> &fans, Fan &target)
     float max_area = 0;
     int target_idx = 0;
     int target_fan_cnt = 0;
+    int other_fan_cnt = 0;
     for (auto fan : fans)
     {
-        if (fan.id == 1)
-        {
+        if (fan.id == 0){
             target = fan;
             target_fan_cnt++;
+        }else if (fan.id == 1){
+            other_fan_cnt++;
         }
     }
+    cout<<"id_0: "<<target_fan_cnt<<" id_1: "<<other_fan_cnt<<endl;
     if (target_fan_cnt >= 1)
         return true;
     else
@@ -73,6 +77,8 @@ bool FanTracker::update(Fan new_fan,int new_timestamp)
 
 void callback_track(const rm_msgs::B_infer_track::ConstPtr& Imsg)
 {
+    src_timestamp = Imsg->src_timestamp;
+    std::cout << "track subscribed! " << src_timestamp << endl;
     if (trackers.size() != 0){
         //维护Tracker队列，删除过旧的Tracker
         for (auto iter = trackers.begin(); iter != trackers.end();){
@@ -149,7 +155,7 @@ void callback_track(const rm_msgs::B_infer_track::ConstPtr& Imsg)
     //若不存在待击打扇叶则返回false
     if (!is_target_exists)
     {
-        std::cout<<"no"<<endl;
+        std::cout<<"target does not exist."<<endl;
         lost_cnt++;
         is_last_target_exists = false;
         // data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
@@ -176,7 +182,7 @@ void callback_track(const rm_msgs::B_infer_track::ConstPtr& Imsg)
     //若不存在可用的扇叶则返回false
     if (avail_tracker_cnt == 0)
     {
-        std::cout<<"nono"<<endl;
+        std::cout<<"no available target."<<endl;
         // LOG(WARNING) <<"[BUFF] No available fan tracker exist!";
         // data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
         lost_cnt++;
@@ -204,18 +210,18 @@ void callback_track(const rm_msgs::B_infer_track::ConstPtr& Imsg)
     }
     Omsg.is_last_target_exists = true;
     ros::NodeHandle nh;
-    std::cout<<"wow"<<endl;
+    std::cout<<"The target is going to be published !"<<endl;
     pub = nh.advertise<rm_msgs::B_track_predict>("B_track_predict", 10);
     pub.publish(Omsg);
     //update
     is_last_target_exists = true;
     last_fan = target;
+    fans.clear();
     return ;
 }
 
 void callback_fan(const rm_msgs::B_infer_fan::ConstPtr& Imsg)
 {
-    std::cout<<"subscribed!"<<endl;
     Fan fan;
     fan.id = Imsg->cls;
     fan.color = Imsg->color;
@@ -236,11 +242,13 @@ void callback_fan(const rm_msgs::B_infer_fan::ConstPtr& Imsg)
     fan.apex2d[4].y = Imsg->apex_4.y;
     for(int i = 0; i < 5; i++)
         fan.apex2d[i] += Point2f((float)Imsg->roi_offset.x,(float)Imsg->roi_offset.y);
+    // std::cout<<"fan subscribed! "<<src_timestamp<<" "<<fan.id<<endl;
     std::vector<Point2f> points_pic(fan.apex2d, fan.apex2d + 5);
     TargetType target_type = BUFF;
     // PNP
     // std::cout<<"fanfanfan"<<endl;
     auto pnp_result = coordsolver.pnp(points_pic, rmat_imu, target_type, SOLVEPNP_ITERATIVE);
+    // cout<<"rmat_imu:"<<endl<<rmat_imu<<endl<<"*---------------*"<<endl;
     fan.armor3d_cam = pnp_result.armor_cam;
     fan.armor3d_world = pnp_result.armor_world;
     fan.centerR3d_cam = pnp_result.R_cam;
@@ -249,6 +257,7 @@ void callback_fan(const rm_msgs::B_infer_fan::ConstPtr& Imsg)
     fan.rmat = pnp_result.rmat;
 
     fans.push_back(fan);
+    // std::cout<<"fan init done!"<<endl;
     return ;
 }
 
@@ -259,7 +268,7 @@ int main(int argc,char** argv)
     ros::init(argc, argv, "buff_tracker"); // 初始化ROS节点
     ros::NodeHandle nh;
     ros::Subscriber sub_fan = nh.subscribe("B_infer_fan", 100, callback_fan);
-    ros::Subscriber sub_track = nh.subscribe("B_infer_track", 100, callback_track);
+    ros::Subscriber sub_track = nh.subscribe("B_infer_track", 1, callback_track);
     ros::spin();
     return 0;
 }

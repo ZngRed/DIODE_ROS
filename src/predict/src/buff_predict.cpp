@@ -52,6 +52,7 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
     //当时间跨度过长视作目标已更新，需清空历史信息队列
     if (history_info.size() == 0 || target.timestamp - history_info.front().timestamp >= max_timespan)
     {
+        cout<<"the target is already updated."<<endl;
         history_info.clear();
         history_info.push_back(target);
         params[0] = 0;
@@ -88,9 +89,9 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
         else
             deque_len = history_deque_len_phase;
     }
-
     if (history_info.size() < deque_len)    
     {
+        cout<<"to be ready"<<endl;
         history_info.push_back(target);
         last_target = target;
         return false;
@@ -132,7 +133,6 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
             ceres::Solver::Options options;
             ceres::Solver::Summary summary;       // 优化信息
             double params_fitting[4] = {1, 1, 1, mean_velocity};
-            
 
             //旋转方向，逆时针为正
             if (rotate_speed_sum / fabs(rotate_speed_sum) >= 0)
@@ -169,6 +169,8 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
             auto rmse = evalRMSE(params_tmp);
             if (rmse > max_rmse)
             {   
+
+                cout << "it's out of control. " << rmse <<endl;
                 cout<<summary.BriefReport()<<endl;
                 return false;
             }
@@ -218,7 +220,7 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
             cout<<"RMSE:"<<new_rmse<<endl;
         }
     }
-
+    
     for (auto param : params)
         cout<<param<<" ";
     cout<<"\n"<<"--------------------"<<endl;
@@ -228,10 +230,10 @@ bool BuffPredictor::predict(double speed, double dist, int timestamp, double &re
     float timespan = history_info.back().timestamp;
     // delta_time_estimate = 0;
     float time_estimate = delta_time_estimate + timespan;
-    // cout<<delta_time_estimate<<endl;     
+    // cout<<delta_time_estimate<<endl;
     result = calcAimingAngleOffset(params, timespan / 1e3, time_estimate / 1e3, mode);
     last_target = target;
-
+    cout<<"predict returned !"<<endl;
     return true;
 }
 /**
@@ -377,6 +379,7 @@ void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
     rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[1],Imsg->rmat_imu[2],
                 Imsg->rmat_imu[3],Imsg->rmat_imu[4],Imsg->rmat_imu[5],
                 Imsg->rmat_imu[6],Imsg->rmat_imu[7],Imsg->rmat_imu[8];
+    // cout<<"rmat_imu:"<<endl<<rmat_imu<<endl<<"*---------------*"<<endl;
     target_rmat <<  Imsg->target_rmat[0],Imsg->target_rmat[1],Imsg->target_rmat[2],
                     Imsg->target_rmat[3],Imsg->target_rmat[4],Imsg->target_rmat[5],
                     Imsg->target_rmat[6],Imsg->target_rmat[7],Imsg->target_rmat[8];
@@ -393,6 +396,7 @@ void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
     // cout<<mean_rotate_speed<<endl;
     if (!predictor.predict(Imsg->mean_rotate_speed, Imsg->mean_r_center_norm, Imsg->src_timestamp, theta_offset))
     {
+        cout<<"the prediction is wrong !"<<endl;
         data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
         return ;
     }
@@ -408,9 +412,7 @@ void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
     Eigen::Vector3d r_center_cam = coordsolver.worldToCam(target_centerR3d_world, rmat_imu);
     center2d_src = coordsolver.reproject(r_center_cam);
     auto target2d = coordsolver.reproject(hit_point_cam);
-
     auto angle = coordsolver.getAngle(hit_point_cam, rmat_imu);
-
     //-----------------判断扇叶是否发生切换-------------------------
     bool is_switched = false;
     auto delta_t = Imsg->src_timestamp - last_timestamp;
@@ -429,6 +431,7 @@ void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
     //若预测出错取消本次数据发送
     if (isnan(angle[0]) || isnan(angle[1]))
     {
+        cout<<"it's not true !"<<endl;
         data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
         return ;
     }
@@ -445,6 +448,7 @@ void callback_predict(const rm_msgs::B_track_predict::ConstPtr& Imsg)
     Omsg.last_roi_center.x = center2d_src.x;
     Omsg.last_roi_center.y = center2d_src.y;
     Omsg.is_last_target_exists = Imsg->is_last_target_exists;
+    cout<<"predict done !"<<endl;
     ros::NodeHandle nh;
     pub = nh.advertise<rm_msgs::B_update>("B_update", 10);
     pub.publish(Omsg);
@@ -456,7 +460,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
     line(img, Point2f(img.size().width / 2, 0), Point2f(img.size().width / 2, img.size().height), Scalar(0,255,0), 1);
     line(img, Point2f(0, img.size().height / 2), Point2f(img.size().width, img.size().height / 2), Scalar(0,255,0), 1);
-    std::cout << "center:" << center2d_src.x << " " << center2d_src.y << endl;
+    // std::cout << "center:" << center2d_src.x << " " << center2d_src.y << endl;
     circle(img, center2d_src, 5, Scalar(255, 0, 255), 2);
     // circle(img, target2d, 5, Scalar(255, 255, 255), 2);
     // putText(img, fmt::format("FPS: {}",int(1000 / dr_full_ms)), {10, 25}, FONT_HERSHEY_SIMPLEX, 1, {0,255,0});
@@ -468,6 +472,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 
 int main(int argc, char** argv)
 {
+    coordsolver.loadParam(camera_param_path,camera_name);
     setlocale(LC_ALL,"");
     ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
     ros::NodeHandle nh;
