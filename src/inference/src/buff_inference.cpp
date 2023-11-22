@@ -1,8 +1,8 @@
 #include <buff/buff_inference.h>
 
-// class buff
-const int max_lost_cnt = 4;//最大丢失目标帧数
-const double no_crop_thres = 2e-3;      //禁用ROI裁剪的装甲板占图像面积最大面积比值
+int mode;
+const int max_lost_cnt = 4; // 最大丢失目标帧数
+const double no_crop_thres = 2e-3; // 禁用ROI裁剪的装甲板占图像面积最大面积比值
 bool is_last_target_exists;
 int lost_cnt;
 int src_timestamp;
@@ -19,80 +19,15 @@ rm_msgs::B_infer_track Omsg_track;
 
 buff_infer infer;
 
-static constexpr int INPUT_W = 416;    // Width of input
-static constexpr int INPUT_H = 416;    // Height of input
-static constexpr int NUM_CLASSES = 2;  // Number of classes
-static constexpr int NUM_COLORS = 2;   // Number of color
-static constexpr int TOPK = 128;       // TopK
+static constexpr int INPUT_W = 416; // Width of input
+static constexpr int INPUT_H = 416; // Height of input
+static constexpr int NUM_CLASSES = 2; // Number of classes
+static constexpr int NUM_COLORS = 2; // Number of color
+static constexpr int TOPK = 128; // TopK
 static constexpr float NMS_THRESH  = 0.1;
 static constexpr float BBOX_CONF_THRESH = 0.6;
 static constexpr float MERGE_CONF_ERROR = 0.15;
 static constexpr float MERGE_MIN_IOU = 0.2;
-
-/**
- * @brief 根据上次装甲板位置截取ROI
- * 
- * @param img 所需处理的图像
- * @return ** Point2i ROI中心点
- */
-#ifdef USING_ROI
-Point2i Autoaim::cropImageByROI(Mat &img)
-{
-    // cout<<"lost:"<<lost_cnt<<endl;
-    //若上次不存在目标
-
-    //FIXME:自适应大小ROI截取可能存在Bug
-    auto area_ratio = last_target_area / img.size().area();
-    if (!is_last_target_exists)
-    {
-        // cout<<lost_cnt<<endl;
-        //当丢失目标帧数过多或lost_cnt为初值
-        if (lost_cnt > max_lost_cnt || lost_cnt == 0 || area_ratio == 0)
-        {
-            return Point2i(0,0);
-        }
-    }
-    //若目标大小大于阈值
-    //丢失目标帧数较小则放大ROI区域
-    // if (lost_cnt <= max_lost_cnt)
-    //     area_ratio*=(1 + lost_cnt);
-
-    if (area_ratio > no_crop_ratio)
-    {
-        return Point2i(0,0);
-    }
-    int max_expand = (img.size().height - input_size.height) / 2;
-    int expand_value = (int)((area_ratio / no_crop_ratio) * max_expand) / 32 * 32;
-    // cout<<"last:"<<last_roi_center<<endl;
-    // Size2i cropped_size = input_size;
-    Size2i cropped_size = {input_size + Size2i(expand_value, expand_value)};
-    // cout<<cropped_size<<" "<<expand_value<<endl;
-    if (cropped_size.width >= img.size().width)
-        cropped_size.width = img.size().width;
-    if (cropped_size.height >= img.size().height)
-        cropped_size.height = img.size().height;
-
-    //处理X越界
-    if (last_roi_center.x <= cropped_size.width / 2)
-        last_roi_center.x = cropped_size.width / 2;
-    if (last_roi_center.x > (img.size().width - cropped_size.width / 2))
-        last_roi_center.x = img.size().width - cropped_size.width / 2;
-    //处理Y越界
-    if (last_roi_center.y <= cropped_size.height / 2)
-        last_roi_center.y = cropped_size.height / 2;
-    if (last_roi_center.y > (img.size().height - cropped_size.height / 2))
-        last_roi_center.y = img.size().height - cropped_size.height / 2;
-    
-    //左上角顶点
-    auto offset = last_roi_center - Point2i(cropped_size.width / 2, cropped_size.height / 2);
-    // auto offset = last_roi_center - Point2i(roi_width / 2, roi_height / 2);
-    Rect roi_rect = Rect(offset, cropped_size);
-    img(roi_rect).copyTo(img);
-
-    // namedWindow("roi", img);
-    return offset;
-}
-#endif //USING_ROI
 
 /**
  * @brief 根据上次装甲板位置截取ROI
@@ -455,12 +390,7 @@ void buff_infer::infer(Mat &img)
     std::vector<BuffObject> objects;
     ros::NodeHandle nh;
 
-    // pub = nh.advertise<rm_msgs::B_infer_fan>("B_infer_fan", 100);
-    // std::cout<<"PPPublished!"<<endl;
-    // pub.publish(Omsg_fan);
-
     cv::Mat pr_img = scaledResize(img, transfrom_matrix);
-    // cv::imshow("INPUT_IMG", pr_img);
     cv::Mat pre, pre_split[3];
     pr_img.convertTo(pre, CV_32F);
     cv::split(pre, pre_split);
@@ -476,8 +406,8 @@ void buff_infer::infer(Mat &img)
     
     //Copy img into blob
     for(int c = 0;c < 3;c++){
-       memcpy(blob_data, pre_split[c].data, INPUT_W * INPUT_H * sizeof(float));
-       blob_data += img_offset;
+        memcpy(blob_data, pre_split[c].data, INPUT_W * INPUT_H * sizeof(float));
+        blob_data += img_offset;
     }
 
     // Do inference
@@ -507,16 +437,16 @@ void buff_infer::infer(Mat &img)
             }
             drawPred(img, landmark);
 
-            Omsg_fan.apex_0.x = (*object).apex[0].x;
-            Omsg_fan.apex_0.y = (*object).apex[0].y;
-            Omsg_fan.apex_1.x = (*object).apex[1].x;
-            Omsg_fan.apex_1.y = (*object).apex[1].y;
-            Omsg_fan.apex_2.x = (*object).apex[2].x;
-            Omsg_fan.apex_2.y = (*object).apex[2].y;
-            Omsg_fan.apex_3.x = (*object).apex[3].x;
-            Omsg_fan.apex_3.y = (*object).apex[3].y;
-            Omsg_fan.apex_4.x = (*object).apex[4].x;
-            Omsg_fan.apex_4.y = (*object).apex[4].y;
+            Omsg_fan.apex_0.x = pts_final[0].x;
+            Omsg_fan.apex_0.y = pts_final[0].y;
+            Omsg_fan.apex_1.x = pts_final[1].x;
+            Omsg_fan.apex_1.y = pts_final[1].y;
+            Omsg_fan.apex_2.x = pts_final[2].x;
+            Omsg_fan.apex_2.y = pts_final[2].y;
+            Omsg_fan.apex_3.x = pts_final[3].x;
+            Omsg_fan.apex_3.y = pts_final[3].y;
+            Omsg_fan.apex_4.x = pts_final[4].x;
+            Omsg_fan.apex_4.y = pts_final[4].y;
             Omsg_fan.roi_offset.x = roi_offset.x;
             Omsg_fan.roi_offset.y = roi_offset.y;
             Omsg_fan.cls = (*object).cls;

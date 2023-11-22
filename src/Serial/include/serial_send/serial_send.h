@@ -18,6 +18,8 @@
 #include <iostream>
 #include <vector>
 
+using namespace std;
+
 //模式
 #define CmdID0 0x00; //关闭视觉
 #define CmdID1 0x01; //自瞄
@@ -45,4 +47,13 @@ const unsigned char CRC8_TAB[256] =
 	0x74, 0x2a, 0xc8, 0x96, 0x15, 0x4b, 0xa9, 0xf7, 0xb6, 0xe8, 0x0a, 0x54, 0xd7, 0x89, 0x6b, 0x35,
 };
 
-using namespace std;
+class c_board
+{
+    public:
+        c_board(); // 构造函数
+		~c_board(); // 析构函数
+        serial::Serial Stm32_Serial; // 声明串口对象
+        
+    private:
+        
+};

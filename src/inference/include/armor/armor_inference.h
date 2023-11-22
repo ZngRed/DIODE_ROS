@@ -4,9 +4,9 @@
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
-#include <rm_msgs/B_infer_fan.h>
-#include <rm_msgs/B_infer_track.h>
-#include <rm_msgs/B_update.h>
+#include <rm_msgs/A_infer_armor.h>
+#include <rm_msgs/A_infer_track.h>
+// #include <rm_msgs/B_update.h>
 
 #include <inference_engine.hpp>
 #include <opencv2/opencv.hpp>
@@ -30,6 +30,9 @@
 using namespace InferenceEngine;
 using namespace std;
 using namespace cv;
+
+enum SpinHeading {UNKNOWN, CLOCKWISE, COUNTER_CLOCKWISE};
+enum Color {BLUE,RED};
 
 struct ArmorObject
 {
@@ -61,10 +64,10 @@ private:
     std::string output_name;
     Eigen::Matrix<float,3,3> transfrom_matrix;
 public:
-    ArmorDetector();
-    ~ArmorDetector();
+    armor_infer();
+    ~armor_infer();
     
     void model_init();
-    void infer(Mat &img);
+    bool infer(Mat &img);
 
 };

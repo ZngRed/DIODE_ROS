@@ -54,7 +54,9 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   serial_receiver.msg
+  A_infer_armor.msg
   B_infer_fan.msg
+  A_infer_track.msg
   B_infer_track.msg
   B_track_predict.msg
   B_update.msg

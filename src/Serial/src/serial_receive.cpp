@@ -29,7 +29,6 @@ bool c_board::getQuat(unsigned char *data)
     quat[3] = exchange_data(f4,process_float_data[12]);
     return true;
 }
-
 /**
  * @brief 解算加速度数据
  * @param data 加速度首地址指针
@@ -164,8 +163,7 @@ c_board::c_board(){     // 在构造函数中引入外参值
     private_nh.param<int>        ("serial_baud_rate", serial_baud_rate, 115200);
     serial_receicer_pub = n.advertise<rm_msgs::serial_receiver>("serial_receive", 1);
     ROS_INFO_STREAM("Data ready");
-    try
-    { 
+    try{
         // 尝试初始化与开启串口
         Stm32_Serial.setPort(usart_port_name); // 选择要开启的串口号
         Stm32_Serial.setBaudrate(serial_baud_rate); // 设置波特率
@@ -174,12 +172,10 @@ c_board::c_board(){     // 在构造函数中引入外参值
         ROS_INFO_STREAM("Stm32_open_success");
         Stm32_Serial.open(); // 开启串口
     }
-    catch (serial::IOException& e)
-    {
+    catch (serial::IOException& e){
         ROS_ERROR_STREAM("robot can not open Stm32_serial port,Please check the serial port cable!: " << e.what()); // 如果开启串口失败，打印错误信息
     }
-    if(Stm32_Serial.isOpen())
-    {
+    if(Stm32_Serial.isOpen()){
         ROS_INFO_STREAM("robot Stm32_serial port opened"); // 串口开启成功提示
     }
 }
