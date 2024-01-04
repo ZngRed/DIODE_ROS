@@ -6,3 +6,4 @@ geometry_msgs/Point roi_offset
 int8 cls
 int8 color
 float32 prob
+int64 area

@@ -58,7 +58,9 @@ add_message_files(
   B_infer_fan.msg
   A_infer_track.msg
   B_infer_track.msg
+  A_track_predict.msg
   B_track_predict.msg
+  A_update.msg
   B_update.msg
 )
 

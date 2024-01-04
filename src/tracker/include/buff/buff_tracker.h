@@ -12,8 +12,6 @@
 #include <Eigen/Core>
 #include <opencv2/opencv.hpp>
 
-// #include "../general/general.h"
-
 using namespace cv;
 using namespace std;
 

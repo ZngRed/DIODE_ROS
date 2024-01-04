@@ -1,0 +1,2 @@
+geometry_msgs/Point last_roi_center
+bool is_last_target_exists
