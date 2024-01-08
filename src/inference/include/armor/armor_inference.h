@@ -6,7 +6,7 @@
 #include <image_transport/image_transport.h>
 #include <rm_msgs/A_infer_armor.h>
 #include <rm_msgs/A_infer_track.h>
-// #include <rm_msgs/B_update.h>
+#include <rm_msgs/A_update.h>
 
 #include <inference_engine.hpp>
 #include <opencv2/opencv.hpp>

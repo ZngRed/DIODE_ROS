@@ -1,7 +1,8 @@
 #include <ros/ros.h>
 #include <rm_msgs/A_infer_armor.h>
 #include <rm_msgs/A_infer_track.h>
-// #include <rm_msgs/A_track_predict.h>
+#include <rm_msgs/A_track_predict.h>
+#include <rm_msgs/A_update.h>
 #include <tools/coordsolver.h>
 
 #include <iostream>

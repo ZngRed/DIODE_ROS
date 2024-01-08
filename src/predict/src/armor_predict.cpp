@@ -1,9 +1,10 @@
 #include <armor/armor_predict.h>
 
-int last_timestamp;
-int src_timestamp;
-
+ArmorPredictor predictor;
+ArmorPredictor predictor_param_loader;
 CoordSolver coordsolver;
+rm_msgs::A_update Omsg;
+ros::Publisher pub;
 
 ArmorPredictor::ArmorPredictor()
 {
@@ -400,200 +401,59 @@ bool ArmorPredictor::setBulletSpeed(double speed)
 
 void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
 {
-    // spin_status ID_candiadates final_armors final_trackers target Armor is_last_target_exists is_target_switched
-    ///----------------------------------反陀螺击打---------------------------------------
-    if (spin_status != UNKNOWN)
-    {
-        //------------------------------尝试确定旋转中心-----------------------------------
-        auto available_candidates_cnt = 0;
-        for (auto iter = ID_candiadates.first; iter != ID_candiadates.second; ++iter)
-        {
-            if ((*iter).second.last_timestamp == src_timestamp)
-            {
-                final_armors.push_back((*iter).second.last_armor);
-                final_trackers.push_back(&(*iter).second);
-            }
-            else
-            {
-                continue;
-            }
-            // // 若Tracker未完成初始化，不考虑使用
-            // if (!(*iter).second.is_initialized || (*iter).second.history_info.size() < 3)
-            // {
-            //     continue;
-            // }
-            // else
-            // {
-            //     final_trackers.push_back(&(*iter).second);
-            //     available_candidates_cnt++;
-            // }
-        }
-        // if (available_candidates_cnt == 0)
-        // {
-        //     cout<<"Invalid"<<endl;
-        // }
-        // else
-        // {   //TODO:改进旋转中心识别方法
-        //     //FIXME:目前在目标小陀螺时并移动时，旋转中心的确定可能存在问题，故该语句块中的全部计算结果均暂未使用
-        //     //-----------------------------计算陀螺旋转半径--------------------------------------
-        //     Eigen::Vector3d rotate_center_cam = {0,0,0};
-        //     Eigen::Vector3d rotate_center_car = {0,0,0};
-        //     for(auto tracker : final_trackers)
-        //     {
-        //         std::vector<Eigen::Vector3d> pts;
-        //         for (auto pt : tracker->history_info)
-        //         {
-        //             pts.push_back(pt.center3d_world);
-        //         }
-        //         auto sphere = FitSpaceCircle(pts);
-        //         auto radius = sphere[3];
-        //         if (tracker->radius == 0)
-        //             tracker->radius = radius;
-        //         else//若不为初值，尝试进行半径平均以尽量误差
-        //             tracker->radius = (tracker->radius + radius) / 2;
-        //         //-----------------------------计算陀螺中心与预瞄点-----------------------------------
-        //         //此处世界坐标系指装甲板世界坐标系，而非车辆世界坐标系
-        //         Eigen::Vector3d rotate_center_world = {0,
-        //                             sin(25 * 180 / CV_PI) * tracker->radius,
-        //                             - cos(25 * 180 / CV_PI) * tracker->radius};
-        //         auto rotMat = eulerToRotationMatrix(tracker->prev_armor.euler);
-        //         //Pc = R * Pw + T
-        //         rotate_center_cam = (rotMat * rotate_center_world) + tracker->prev_armor.center3d_cam;
-        //         rotate_center_car += coordsolver.worldToCam(rotate_center_cam, rmat_imu);
-        //     }
-        //     //求解旋转中心
-        //     rotate_center_car /= final_trackers.size();
-        // }
-        //若存在一块装甲板
-        if (final_armors.size() == 1)
-        {
-            target = final_armors.at(0);
-        }
-        //若存在两块装甲板
-        else if (final_armors.size() == 2)
-        {
-            //对最终装甲板进行排序，选取与旋转方向相同的装甲板进行更新
-            sort(final_armors.begin(),final_armors.end(),[](Armor& prev, Armor& next)
-                                {return prev.center3d_cam[0] < next.center3d_cam[0];});
-            //若顺时针旋转选取右侧装甲板更新
-            if (spin_status == CLOCKWISE)
-                target = final_armors.at(1);
-            //若逆时针旋转选取左侧装甲板更新
-            else if (spin_status == COUNTER_CLOCKWISE)
-                target = final_armors.at(0);
-        }
+    Eigen::Matrix3d rmat_imu;
+    Eigen::Vector3d aiming_point;
+    int target_color;
+    Eigen::Vector3d target_center3d_cam;
+    Eigen::Vector3d target_center3d_world;
+    int src_timestamp;
+    bool is_target_switched;
+    int dead_buffer_cnt;
+    bool is_target_spinning;
+    double target_center3d_cam_norm;
 
-        //判断装甲板是否切换，若切换将变量置1
-        auto delta_t = src_timestamp - src_timestamp;
-        auto delta_dist = (target.center3d_world - last_armor.center3d_world).norm();
-        auto velocity = (delta_dist / delta_t) * 1e3;
-        if ((target.id != last_armor.id || !last_armor.roi.contains((target.center2d))) &&
-            is_last_target_exists)
-            is_target_switched = true;
-        else
-            is_target_switched = false;
-#ifdef USING_PREDICT
-        if (is_target_switched)
-        {
-            predictor.initParam(predictor_param_loader);
-            aiming_point = target.center3d_cam;
-        }
-        else
-        {
-            auto aiming_point_world = predictor.predict(target.center3d_world, src_timestamp);
-            // aiming_point = aiming_point_world;
-            aiming_point = coordsolver.worldToCam(aiming_point_world, rmat_imu);
-        }
-#else
-    // aiming_point = coordsolver.worldToCam(target.center3d_world,rmat_imu);
-    aiming_point = target.center3d_cam;
-#endif //USING_PREDICT
+    rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[1],Imsg->rmat_imu[2],
+                Imsg->rmat_imu[3],Imsg->rmat_imu[4],Imsg->rmat_imu[5],
+                Imsg->rmat_imu[6],Imsg->rmat_imu[7],Imsg->rmat_imu[8];
+    aiming_point[0] = Imsg->aiming_point.x;
+    aiming_point[1] = Imsg->aiming_point.y;
+    aiming_point[2] = Imsg->aiming_point.z;
+    target_color = Imsg->target_color;
+    target_center3d_cam[0] = Imsg->target_center3d_cam.x;
+    target_center3d_cam[1] = Imsg->target_center3d_cam.y;
+    target_center3d_cam[2] = Imsg->target_center3d_cam.z;
+    target_center3d_world[0] = Imsg->target_center3d_world.x;
+    target_center3d_world[1] = Imsg->target_center3d_world.y;
+    target_center3d_world[2] = Imsg->target_center3d_world.z;
+    src_timestamp = Imsg->src_timestamp;
+    is_target_switched = Imsg->is_target_switched;
+    dead_buffer_cnt = Imsg->dead_buffer_cnt;
+    is_target_spinning = Imsg->is_target_spinning;
+    target_center3d_cam_norm = Imsg->target_center3d_cam_norm;
+
+    VisionData data;
+// #ifdef USING_PREDICT
+    //目前类别预测不是十分稳定,若之后仍有问题，可以考虑去除类别判断条件
+    if (is_target_switched)
+    {
+        predictor.initParam(predictor_param_loader);
+        // cout<<"initing"<<endl;
+        aiming_point = target_center3d_cam;
     }
-    ///----------------------------------常规击打---------------------------------------
     else
     {
-        for (auto iter = ID_candiadates.first; iter != ID_candiadates.second; ++iter)
-        {
-            // final_armors.push_back((*iter).second.last_armor);
-            final_trackers.push_back(&(*iter).second);
-        }
-        //进行目标选择
-        auto tracker = chooseTargetTracker(final_trackers, src_timestamp);
-        tracker->last_selected_timestamp = src_timestamp;
-        tracker->selected_cnt++;
-        target = tracker->last_armor;
-        //判断装甲板是否切换，若切换将变量置1
-        // auto delta_t = src_timestamp - last_timestamp;
-        auto delta_dist = (target.center3d_world - last_armor.center3d_world).norm();
-        auto velocity = (delta_dist / delta_t) * 1e3;
-        // cout<<(delta_dist >= max_delta_dist)<<" "<<!last_armor.roi.contains(target.center2d)<<endl;
-        if ((target.id != last_armor.id || !last_armor.roi.contains((target.center2d))) &&
-            is_last_target_exists)
-            is_target_switched = true;
-        else
-            is_target_switched = false;
-
-
-#ifdef USING_PREDICT
-        //目前类别预测不是十分稳定,若之后仍有问题，可以考虑去除类别判断条件
-        if (is_target_switched)
-        {
-            predictor.initParam(predictor_param_loader);
-            // cout<<"initing"<<endl;
-            aiming_point = target.center3d_cam;
-        }
-        else
-        {
-            auto aiming_point_world = predictor.predict(target.center3d_world, src_timestamp);
-            // aiming_point = aiming_point_world;
-            aiming_point = coordsolver.worldToCam(aiming_point_world, rmat_imu);
-        }
-#else
-    // aiming_point = coordsolver.worldToCam(target.center3d_world,rmat_imu);
-    aiming_point = target.center3d_cam;
-#endif //USING_PREDICT
+        auto aiming_point_world = predictor.predict(target_center3d_world, src_timestamp);
+        // aiming_point = aiming_point_world;
+        aiming_point = coordsolver.worldToCam(aiming_point_world, rmat_imu);
     }
-#ifdef ASSIST_LABEL
-    auto label_name = path_prefix + to_string(src_timestamp) + ".txt";
-    string content;
+// #else
+    // aiming_point = target.center3d_cam;
+// #endif //USING_PREDICT
 
-    int cls = 0;
-    if (target.id == 7)
-        cls = 9 * target.color - 1;
-    if (target.id != 7)
-        cls = target.id + target.color * 9;
-    
-    content.append(to_string(cls) + " ");
-    for (auto apex : target.apex2d)
-    {
-        content.append(to_string((apex.x - roi_offset.x) / input_size.width));
-        content.append(" ");
-        content.append(to_string((apex.y - roi_offset.y) / input_size.height));
-        content.append(" ");
-    }
-    content.pop_back();
-    cout<<to_string(src_timestamp) + " "<<content<<endl;
-    file.open(label_name,std::ofstream::app);
-    file<<content;
-    file.close();
-    usleep(5000);
-#endif //ASSIST_LABEL
-
-    if (target.color == 2)
+    if (target_color == 2)
         dead_buffer_cnt++;
     else
         dead_buffer_cnt = 0;
-    //获取装甲板中心与装甲板面积以下一次ROI截取使用
-    last_roi_center = target.center2d;
-    // last_roi_center = Point2i(512,640);
-    last_armor = target;
-    lost_cnt = 0;
-    last_timestamp = src_timestamp;
-    last_target_area = target.area;
-    last_aiming_point = aiming_point;
-    is_last_target_exists = true;
-    last_armors.clear();
-    last_armors = armors;
 #ifdef SHOW_AIM_CROSS
     line(src.img, Point2f(src.img.size().width / 2, 0), Point2f(src.img.size().width / 2, src.img.size().height), {0,255,0}, 1);
     line(src.img, Point2f(0, src.img.size().height / 2), Point2f(src.img.size().width, src.img.size().height / 2), {0,255,0}, 1);
@@ -627,13 +487,13 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     auto angle = coordsolver.getAngle(aiming_point, rmat_imu);
     //若预测出错则直接世界坐标系下坐标作为击打点
     if (isnan(angle[0]) || isnan(angle[1]))
-        angle = coordsolver.getAngle(target.center3d_cam, rmat_imu);
+        angle = coordsolver.getAngle(target_center3d_cam, rmat_imu);
     auto time_predict = std::chrono::steady_clock::now();
 
-    double dr_crop_ms = std::chrono::duration<double,std::milli>(time_crop - time_start).count();
-    double dr_infer_ms = std::chrono::duration<double,std::milli>(time_infer - time_crop).count();
-    double dr_predict_ms = std::chrono::duration<double,std::milli>(time_predict - time_infer).count();
-    double dr_full_ms = std::chrono::duration<double,std::milli>(time_predict - time_start).count();
+    // double dr_crop_ms = std::chrono::duration<double,std::milli>(time_crop - time_start).count();
+    // double dr_infer_ms = std::chrono::duration<double,std::milli>(time_infer - time_crop).count();
+    // double dr_predict_ms = std::chrono::duration<double,std::milli>(time_predict - time_infer).count();
+    // double dr_full_ms = std::chrono::duration<double,std::milli>(time_predict - time_start).count();
 
 #ifdef SHOW_FPS
     putText(src.img, fmt::format("FPS: {}", int(1000 / dr_full_ms)), {10, 25}, FONT_HERSHEY_SIMPLEX, 1, {0,255,0});
@@ -667,12 +527,6 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     fmt::print(fmt::fg(fmt::color::orange_red), "Is Spinning: {} \n",is_target_spinning);
     fmt::print(fmt::fg(fmt::color::orange_red), "Is Switched: {} \n",is_target_switched);
 #endif //PRINT_TARGET_INFO
-#ifdef SAVE_AUTOAIM_LOG
-    LOG(INFO) <<"[AUTOAIM] LATENCY: "<< "Crop: " << dr_crop_ms << " ms" << " Infer: " << dr_infer_ms << " ms" << " Predict: " << dr_predict_ms << " ms" << " Total: " << dr_full_ms << " ms";
-    LOG(INFO) <<"[AUTOAIM] TARGET_INFO: "<< "Yaw: " << angle[0] << " Pitch: " << angle[1] << " Dist: " << (float)target.center3d_cam.norm()
-                    << " Target: " << target.key << " Is Spinning: " << is_target_spinning<< " Is Switched: " << is_target_switched;
-    LOG(INFO) <<"[AUTOAIM] PREDICTED: "<<"X: "<<aiming_point[0]<<" Y: "<<aiming_point[1]<<" Z: " << aiming_point[2];
-#endif //SAVE_AUTOAIM_LOG
 
     //若预测出错取消本次数据发送
     if (isnan(angle[0]) || isnan(angle[1]))
@@ -680,8 +534,14 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
         LOG(ERROR)<<"NAN Detected! Data Transmit Aborted!";
         return ;
     }
+    cout<<"predict done !"<<endl;
+    // pub
+    
+    ros::NodeHandle nh;
+    pub = nh.advertise<rm_msgs::A_update>("A_update", 10);
+    pub.publish(Omsg);
 
-    // data = {(float)angle[1], (float)angle[0], (float)target.center3d_cam.norm(), is_target_switched, 1, is_target_spinning, 0};
+    data = {(float)angle[1], (float)angle[0], (float)target_center3d_cam_norm, is_target_switched, 1, is_target_spinning, 0};
     return ;
 }
 
@@ -692,8 +552,8 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
     ros::NodeHandle nh;
     ros::Subscriber sub = nh.subscribe("B_track_predict", 100, callback_predict);
-    image_transport::ImageTransport it(nh);
-    image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
+    // image_transport::ImageTransport it(nh);
+    // image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
     ros::spin();
     return 0;
 }

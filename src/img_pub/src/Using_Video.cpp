@@ -4,7 +4,7 @@ int main(int argc, char** argv)
 {
     auto time_start=std::chrono::steady_clock::now();
     setlocale(LC_ALL,"");
-    string path = "/home/dhu/Sample/Test.mp4";
+    string path = "/home/dhu/Sample/text1.mp4";
     cv::VideoCapture cap(path);
     cv::Mat original_image;
 

@@ -143,7 +143,7 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/predict_node.cpp)
 add_executable(buff_predict src/buff_predict.cpp)
-# add_executable(armor_predict src/armor_predict.cpp)
+add_executable(armor_predict src/armor_predict.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -162,9 +162,9 @@ add_executable(buff_predict src/buff_predict.cpp)
 target_link_libraries(buff_predict
   coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
 )
-# target_link_libraries(armor_predict
-#   coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
-# )
+target_link_libraries(armor_predict
+  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
+)
 
 #############
 ## Install ##

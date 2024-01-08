@@ -3,7 +3,11 @@
 std::multimap<string, ArmorTracker> trackers_map;      //预测器Map
 std::map<string,int> new_armors_cnt_map;    //装甲板计数map，记录新增装甲板数
 std::map<string,SpinHeading> spin_status_map;    //反小陀螺，记录该车小陀螺状态
+std::map<string,double> spin_score_map;     //反小陀螺，记录各装甲板小陀螺可能性分数，大于0为逆时针旋转，小于0为顺时针旋转
 
+int anti_spin_judge_high_thres = 2e4;   //大于该阈值认为该车已开启陀螺
+int anti_spin_judge_low_thres = 2e3;    //小于该阈值认为该车已关闭陀螺
+int anti_spin_max_r_multiple = 4.5;
 const int max_delta_t = 50;                //使用同一预测器的最大时间间隔(ms)
 const int armor_type_wh_thres = 2.8;      //大小装甲板长宽比阈值
 const double armor_roi_expand_ratio_width = 1;
@@ -15,6 +19,7 @@ const int hero_danger_zone = 99;       //英雄危险距离阈值，检测到有
 
 int dead_buffer_cnt;
 bool is_last_target_exists;
+bool is_target_switched;
 int lost_cnt;
 int src_timestamp;
 int prev_timestamp;
@@ -24,6 +29,105 @@ Armor last_armor;
 std::vector<Armor> last_armors;
 std::vector<Armor> armors;
 CoordSolver coordsolver;
+ros::Publisher pub;
+
+Armor target;
+
+/**
+ * @brief 更新陀螺Score，函数关系在MATLAB中测试得出，在程序帧率恒定100fps
+ * 的假设下，该函数关系可以在转速为 5rad/s -- 15rad/s 的情况下，
+ * 在10到12次装甲板切换后识别出陀螺状态，无切换约0.5s-1s后自动退出陀螺状态
+ * 
+ * @return true 更新分数成功
+ */
+bool updateSpinScore()
+{    
+    for (auto score = spin_score_map.begin(); score != spin_score_map.end();)
+    {
+        SpinHeading spin_status;
+        //若Status_Map不存在该元素
+
+        if (spin_score_map.count((*score).first) == 0)
+            spin_status = UNKNOWN;
+        else
+            spin_status = spin_status_map[(*score).first];
+        // cout<<(*score).first<<"--:"<<(*score).second<<" "<<spin_status<<endl;
+        LOG(INFO)<<"[SpinDetection] Current Spin score :"<<(*score).first<<" : "<<(*score).second<<" "<<spin_status;
+        // 若分数过低移除此元素
+        if (abs((*score).second) <= anti_spin_judge_low_thres && spin_status != UNKNOWN)
+        {
+            fmt::print(fmt::fg(fmt::color::red), "[SpinDetection] Removing {}.\n", (*score).first);
+            LOG(INFO)<<"[SpinDetection] Removing "<<(*score).first;
+            spin_status_map.erase((*score).first);
+            score = spin_score_map.erase(score);
+            continue;
+        }
+        // 
+        if (spin_status != UNKNOWN)
+            (*score).second = 0.978 * (*score).second - 1 * abs((*score).second) / (*score).second;
+        else
+            (*score).second = 0.997 * (*score).second - 1 * abs((*score).second) / (*score).second;
+        //当小于该值时移除该元素
+        if (abs((*score).second) < 3 || isnan((*score).second))
+        {
+            spin_status_map.erase((*score).first);
+            score = spin_score_map.erase(score);
+            continue;
+        }
+        else if (abs((*score).second) >= anti_spin_judge_high_thres)
+        {
+            (*score).second = anti_spin_judge_high_thres * abs((*score).second) / (*score).second;
+            if ((*score).second > 0)
+                spin_status_map[(*score).first] = CLOCKWISE;
+            else if((*score).second < 0)
+                spin_status_map[(*score).first] = COUNTER_CLOCKWISE;
+        }
+        ++score;
+    }
+    // cout<<"++++++++++++++++++++++++++"<<endl;
+    // for (auto status : spin_status_map)
+    // {
+    //     cout<<status.first<<" : "<<status.second<<endl;
+    // }
+    return true;
+}
+
+/**
+ * @brief 从ArmorTracker选出最佳Tracker
+ * 
+ * @param trackers Trackers
+ * @param timestamp 本次时间戳 
+ * @return ArmorTracker* 选中的ArmorTracker
+ */
+ArmorTracker* chooseTargetTracker(vector<ArmorTracker*> trackers, int timestamp)
+{
+    //TODO:优化打击逻辑
+    //TODO:本逻辑为哨兵逻辑
+    float max_score = 0;
+    int target_idx = 0;
+    int last_target_idx = -1;
+    // cout<<trackers.size()<<endl;
+    for (int i = 0; i < trackers.size(); i++)
+    {
+
+        //计算tracker的切换打击分数,由装甲板旋转角度,距离,面积大小决定
+        if (trackers[i]->last_timestamp == timestamp)
+        {
+            if (trackers[i]->last_selected_timestamp == prev_timestamp && abs(prev_timestamp - timestamp) < 100)
+                last_target_idx = i;
+            if (trackers[i]->hit_score > max_score)
+            {
+                max_score = trackers[i]->hit_score;
+                target_idx = i;
+            }
+        }
+    }
+
+    //若存在上次存在目标且分数与相差不大，选择该装甲板
+    if (last_target_idx != -1 && abs(trackers[last_target_idx]->hit_score - max_score) / max_score < 0.1)
+        target_idx = last_target_idx;
+    return trackers[target_idx];
+}
 
 /**
  * @brief 选择击打车辆ID
@@ -139,7 +243,7 @@ bool ArmorTracker::update(Armor new_armor, int new_timestamp)
 void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
 {
     src_timestamp = Imsg->src_timestamp;
-    std::cout << "track subscribed! " << src_timestamp << endl;
+    LOG(INFO) << "track subscribed! " << src_timestamp;
 
     // ///------------------------将对象排序，保留面积较大的对象---------------------------------
     // sort(objects.begin(),objects.end(),[](ArmorObject& prev, ArmorObject& next)
@@ -159,13 +263,13 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         imshow("dst",src.img);
         waitKey(1);
 #endif //SHOW_IMG
-#ifdef USING_SPIN_DETECT
+// #ifdef USING_SPIN_DETECT
         updateSpinScore();
-#endif //USING_SPIN_DETECT
+// #endif //USING_SPIN_DETECT
         lost_cnt++;
         is_last_target_exists = false;
         // data = {(float)0, (float)0, (float)0, 0, 0, 0, 1};
-        LOG(WARNING) <<"[AUTOAIM] No available armor exists!";
+        LOG(WARNING) <<"[AUTOAIM] armors is empty!";
         return ;
     }
 
@@ -282,7 +386,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     // cout<<"::"<<predictors_map.size()<<endl;
     // for (auto member : new_armors_cnt_map)
     //     cout<<member.first<<" : "<<member.second<<endl;
-#ifdef USING_SPIN_DETECT
+// #ifdef USING_SPIN_DETECT
     ///------------------------检测装甲板变化情况,计算各车陀螺分数----------------------------
     for (auto cnt : new_armors_cnt_map)
     {
@@ -355,7 +459,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     // {
     //     cout<<status.first<<" : "<<status.second<<endl;
     // }
-#endif //USING_SPIN_DETECT
+// #endif //USING_SPIN_DETECT
     ///-----------------------------判断击打车辆------------------------------------------
     auto target_id = chooseTargetID(armors, src_timestamp);
     string target_key;
@@ -385,7 +489,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     auto ID_candiadates = trackers_map.equal_range(target_key);
     ///---------------------------获取最终装甲板序列---------------------------------------
     bool is_target_spinning;
-    Armor target;
+    
     Eigen::Vector3d aiming_point;
     std::vector<ArmorTracker*> final_trackers;
     std::vector<Armor> final_armors;
@@ -405,28 +509,150 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         else
             is_target_spinning = false;
     }
+        ///----------------------------------反陀螺击打---------------------------------------
+    if (spin_status != UNKNOWN)
+    {
+        //------------------------------尝试确定旋转中心-----------------------------------
+        auto available_candidates_cnt = 0;
+        for (auto iter = ID_candiadates.first; iter != ID_candiadates.second; ++iter)
+        {
+            if ((*iter).second.last_timestamp == src_timestamp)
+            {
+                final_armors.push_back((*iter).second.last_armor);
+                final_trackers.push_back(&(*iter).second);
+            }
+            else
+            {
+                continue;
+            }
+            // // 若Tracker未完成初始化，不考虑使用
+            // if (!(*iter).second.is_initialized || (*iter).second.history_info.size() < 3)
+            // {
+            //     continue;
+            // }
+            // else
+            // {
+            //     final_trackers.push_back(&(*iter).second);
+            //     available_candidates_cnt++;
+            // }
+        }
+        // if (available_candidates_cnt == 0)
+        // {
+        //     cout<<"Invalid"<<endl;
+        // }
+        // else
+        // {   //TODO:改进旋转中心识别方法
+        //     //FIXME:目前在目标小陀螺时并移动时，旋转中心的确定可能存在问题，故该语句块中的全部计算结果均暂未使用
+        //     //-----------------------------计算陀螺旋转半径--------------------------------------
+        //     Eigen::Vector3d rotate_center_cam = {0,0,0};
+        //     Eigen::Vector3d rotate_center_car = {0,0,0};
+        //     for(auto tracker : final_trackers)
+        //     {
+        //         std::vector<Eigen::Vector3d> pts;
+        //         for (auto pt : tracker->history_info)
+        //         {
+        //             pts.push_back(pt.center3d_world);
+        //         }
+        //         auto sphere = FitSpaceCircle(pts);
+        //         auto radius = sphere[3];
+        //         if (tracker->radius == 0)
+        //             tracker->radius = radius;
+        //         else//若不为初值，尝试进行半径平均以尽量误差
+        //             tracker->radius = (tracker->radius + radius) / 2;
+        //         //-----------------------------计算陀螺中心与预瞄点-----------------------------------
+        //         //此处世界坐标系指装甲板世界坐标系，而非车辆世界坐标系
+        //         Eigen::Vector3d rotate_center_world = {0,
+        //                             sin(25 * 180 / CV_PI) * tracker->radius,
+        //                             - cos(25 * 180 / CV_PI) * tracker->radius};
+        //         auto rotMat = eulerToRotationMatrix(tracker->prev_armor.euler);
+        //         //Pc = R * Pw + T
+        //         rotate_center_cam = (rotMat * rotate_center_world) + tracker->prev_armor.center3d_cam;
+        //         rotate_center_car += coordsolver.worldToCam(rotate_center_cam, rmat_imu);
+        //     }
+        //     //求解旋转中心
+        //     rotate_center_car /= final_trackers.size();
+        // }
+        //若存在一块装甲板
+        if (final_armors.size() == 1)
+        {
+            target = final_armors.at(0);
+        }
+        //若存在两块装甲板
+        else if (final_armors.size() == 2)
+        {
+            //对最终装甲板进行排序，选取与旋转方向相同的装甲板进行更新
+            sort(final_armors.begin(),final_armors.end(),[](Armor& prev, Armor& next)
+                                {return prev.center3d_cam[0] < next.center3d_cam[0];});
+            //若顺时针旋转选取右侧装甲板更新
+            if (spin_status == CLOCKWISE)
+                target = final_armors.at(1);
+            //若逆时针旋转选取左侧装甲板更新
+            else if (spin_status == COUNTER_CLOCKWISE)
+                target = final_armors.at(0);
+        }
+
+        //判断装甲板是否切换，若切换将变量置1
+        auto delta_t = src_timestamp - prev_timestamp;
+        auto delta_dist = (target.center3d_world - last_armor.center3d_world).norm();
+        auto velocity = (delta_dist / delta_t) * 1e3;
+        if ((target.id != last_armor.id || !last_armor.roi.contains((target.center2d))) &&
+            is_last_target_exists)
+            is_target_switched = true;
+        else
+            is_target_switched = false;
+    }
+    ///----------------------------------常规击打---------------------------------------
+    else
+    {
+        for (auto iter = ID_candiadates.first; iter != ID_candiadates.second; ++iter)
+        {
+            // final_armors.push_back((*iter).second.last_armor);
+            final_trackers.push_back(&(*iter).second);
+        }
+        //进行目标选择
+        auto tracker = chooseTargetTracker(final_trackers, src_timestamp);
+        tracker->last_selected_timestamp = src_timestamp;
+        tracker->selected_cnt++;
+        target = tracker->last_armor;
+        //判断装甲板是否切换，若切换将变量置1
+        auto delta_t = src_timestamp - prev_timestamp;
+        auto delta_dist = (target.center3d_world - last_armor.center3d_world).norm();
+        auto velocity = (delta_dist / delta_t) * 1e3;
+        // cout<<(delta_dist >= max_delta_dist)<<" "<<!last_armor.roi.contains(target.center2d)<<endl;
+        if ((target.id != last_armor.id || !last_armor.roi.contains((target.center2d))) &&
+            is_last_target_exists)
+            is_target_switched = true;
+        else
+            is_target_switched = false;
+    }
     //pub
-    // rm_msgs::A_track_predict Omsg;
-    // Omsg.mode = mode;
-    // Omsg.mean_rotate_speed = mean_rotate_speed;
-    // Omsg.mean_r_center_norm = mean_r_center.norm();
-    // Omsg.src_timestamp = Imsg->src_timestamp;
-    // Omsg.target_armor3d_world.x = target.armor3d_world[0];
-    // Omsg.target_armor3d_world.y = target.armor3d_world[1];
-    // Omsg.target_armor3d_world.z = target.armor3d_world[2];
-    // Omsg.target_centerR3d_world.x = target.centerR3d_world[0];
-    // Omsg.target_centerR3d_world.y = target.centerR3d_world[1];
-    // Omsg.target_centerR3d_world.z = target.centerR3d_world[2];
-    // for(int i = 0; i < 9; i++){
-    //     Omsg.rmat_imu[i] = rmat_imu(i);
-    //     Omsg.target_rmat[i] = target.rmat(i);
-    //     Omsg.last_fan_rmat_transpose[i] = last_fan_rmat_transpose(i);
-    // }
-    // Omsg.is_last_target_exists = true;
-    // ros::NodeHandle nh;
+    rm_msgs::A_track_predict Omsg;
+
+    for(int i = 0; i < 9; i++){
+        Omsg.rmat_imu[i] = rmat_imu(i);
+    }
+    Omsg.target_color = target.color;
+    Omsg.aiming_point.x = aiming_point[0];
+    Omsg.aiming_point.y = aiming_point[1];
+    Omsg.aiming_point.z = aiming_point[2];
+    Omsg.target_center3d_cam.x = target.center3d_cam[0];
+    Omsg.target_center3d_cam.y = target.center3d_cam[1];
+    Omsg.target_center3d_cam.z = target.center3d_cam[2];
+    Omsg.target_center3d_world.x = target.center3d_world[0];
+    Omsg.target_center3d_world.y = target.center3d_world[1];
+    Omsg.target_center3d_world.z = target.center3d_world[2];
+    Omsg.src_timestamp = Imsg->src_timestamp;
+    Omsg.is_target_switched = is_target_switched;
+    Omsg.dead_buffer_cnt = dead_buffer_cnt;
+    Omsg.is_target_spinning = is_target_spinning;
+    Omsg.target_center3d_cam_norm = target.center3d_cam.norm();
+    Omsg.last_roi_center.x = target.center2d.x; 
+    Omsg.last_roi_center.y = target.center2d.y;
+    Omsg.last_target_area = target.area;
+    ros::NodeHandle nh;
     // std::cout<<"The target is going to be published !"<<endl;
-    // pub = nh.advertise<rm_msgs::B_track_predict>("B_track_predict", 10);
-    // pub.publish(Omsg);
+    pub = nh.advertise<rm_msgs::A_track_predict>("A_track_predict", 10);
+    pub.publish(Omsg);
     //update
     // is_last_target_exists = true;
     // last_fan = target;
@@ -436,14 +662,15 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
 
 void callback_armor(const rm_msgs::A_infer_armor::ConstPtr& Imsg)
 {
+    LOG(INFO)<<"ARMOR!!!";
     Armor armor;
     armor.id = Imsg->cls;
     armor.color = Imsg->color;
     armor.conf = Imsg->prob;
     if (Imsg->color == 0)
-        armor.key = "B" + string(Imsg->cls == 0 ? "Activated" : "Target");
+        armor.key = "B" + to_string(Imsg->cls);
     if (Imsg->color == 1)
-        armor.key = "R" + string(Imsg->cls == 0 ? "Activated" : "Target");
+        armor.key = "R" + to_string(Imsg->cls);
     //生成顶点与装甲板二维中心点
     armor.apex2d[0].x = Imsg->apex_0.x;
     armor.apex2d[0].y = Imsg->apex_0.y;
@@ -528,14 +755,26 @@ void callback_armor(const rm_msgs::A_infer_armor::ConstPtr& Imsg)
     return ;
 }
 
+void callback_update(const rm_msgs::A_update::ConstPtr& Imsg)
+{
+    last_armor = target;
+    lost_cnt = 0;
+    prev_timestamp = src_timestamp;
+    is_last_target_exists = true;
+    last_armors.clear();
+    last_armors = armors;
+    return ;
+}
+
 int main(int argc,char** argv)
 {
     coordsolver.loadParam(camera_param_path,camera_name);
     setlocale(LC_ALL,"");
     ros::init(argc, argv, "armor_tracker"); // 初始化ROS节点
     ros::NodeHandle nh;
+    // ros::Subscriber sub_update = nh.subscribe("A_update", 100, callback_update);
     ros::Subscriber sub_armor = nh.subscribe("A_infer_armor", 100, callback_armor);
-    ros::Subscriber sub_track = nh.subscribe("A_infer_track", 1, callback_track);
+    // ros::Subscriber sub_track = nh.subscribe("A_infer_track", 1, callback_track);
     ros::spin();
     return 0;
 }
