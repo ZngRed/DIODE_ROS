@@ -18,9 +18,6 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <yaml-cpp/yaml.h>
-#include <fmt/format.h>
-#include <fmt/color.h>
-#include <glog/logging.h>
 
 // #include "../../filter/particle_filter.h"
 
@@ -29,6 +26,8 @@ using namespace cv;
 
 enum SpinHeading {UNKNOWN, CLOCKWISE, COUNTER_CLOCKWISE};
 enum Color {BLUE,RED};
+
+// const string predict_param_path = "../params/filter/filter_param.yaml";
 
 class ArmorPredictor
 {

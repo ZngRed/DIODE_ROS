@@ -1,4 +1,4 @@
-#include <armor/armor_inference.h>
+#include <armor_inference/armor_inference.h>
 
 int mode;
 Color detect_color;
@@ -460,7 +460,7 @@ bool armor_infer::infer(Mat &img)
 
     if (img.empty())
     {
-        fmt::print(fmt::fg(fmt::color::red), "[DETECT] ERROR: 传入了空的src\n");
+        // fmt::print(fmt::fg(fmt::color::red), "[DETECT] ERROR: 传入了空的src\n");
         return false;
     }
     cv::Mat pr_img = scaledResize(img, transfrom_matrix);
@@ -523,22 +523,25 @@ bool armor_infer::infer(Mat &img)
             Omsg_armor.color = (*object).color;
             Omsg_armor.prob = (*object).prob;
             pub_armor = nh.advertise<rm_msgs::A_infer_armor>("A_infer_armor", 100);
-            LOG(INFO)<<"PUBARMOR!";
+            ROS_INFO("PUB ARMOR!");
             pub_armor.publish(Omsg_armor);
         }
         (*object).area = (int)(calcTetragonArea((*object).apex));
     }
     if (objects.size() != 0){
-        LOG(INFO)<<"objects.size: "<<objects.size();
+        ROS_INFO("objects.size: %ld", objects.size());
         Omsg_track.src_timestamp = src_timestamp;
-        pub_armor = nh.advertise<rm_msgs::A_infer_track>("A_infer_track", 1);
-        pub_armor.publish(Omsg_track);
+        if(detect_color == BLUE)
+            Omsg_track.detect_color = 0;
+        else Omsg_track.detect_color = 1;
+        pub_track = nh.advertise<rm_msgs::A_infer_track>("A_infer_track", 100);
+        pub_track.publish(Omsg_track);
         return true;
     }
     else return false;
 }
 
-void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
+void callback_infer(const sensor_msgs::ImageConstPtr& Imsg)
 {
     cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
     vector<ArmorObject> objects;
@@ -588,7 +591,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
 #endif //USING_SPIN_DETECT
         lost_cnt++;
         is_last_target_exists = false;
-        LOG(WARNING) <<"[AUTOAIM] No target detected!";
+        ROS_WARN("[AUTOAIM] No target detected!");
         return ;
     }
     return ;
@@ -618,7 +621,7 @@ int main(int argc, char** argv)
     image_transport::ImageTransport it(nh);
     ros::Subscriber sub_update = nh.subscribe("A_update", 10, callback_A_update);
     ros::Subscriber sub_timestamp = nh.subscribe("src_timestamp", 10, callback_timestamp);
-    image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
+    image_transport::Subscriber sub_img = it.subscribe("images", 10, callback_infer);
     ros::spin();
     return 0;
 }

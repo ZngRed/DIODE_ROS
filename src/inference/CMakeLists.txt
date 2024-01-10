@@ -21,8 +21,6 @@ set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
 find_package(OpenCV 4.5.0 REQUIRED)
 find_package(InferenceEngine REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(fmt REQUIRED)
-find_package(glog REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -169,7 +167,7 @@ target_link_libraries(buff_inference
   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${InferenceEngine_LIBRARIES}
 )
 target_link_libraries(armor_inference
-  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${InferenceEngine_LIBRARIES} fmt::fmt glog
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${InferenceEngine_LIBRARIES}
 )
 
 #############

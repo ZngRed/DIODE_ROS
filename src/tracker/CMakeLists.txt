@@ -15,8 +15,6 @@ find_package(catkin REQUIRED COMPONENTS
 set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
 find_package(OpenCV 4.5.0 REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(fmt REQUIRED)
-find_package(glog REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -161,7 +159,7 @@ target_link_libraries(buff_tracker
   coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools}
 )
 target_link_libraries(armor_tracker
-  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} fmt::fmt glog
+  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools}
 )
 
 #############

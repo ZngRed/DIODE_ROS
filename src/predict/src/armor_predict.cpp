@@ -1,4 +1,6 @@
-#include <armor/armor_predict.h>
+#include <armor_predict/armor_predict.h>
+
+Point2d aiming_2d;
 
 ArmorPredictor predictor;
 ArmorPredictor predictor_param_loader;
@@ -56,7 +58,7 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
     //若位置粒子滤波器未完成初始化或滤波结果与目前位置相距过远,则本次不对目标位置做滤波,直接向队列压入原值
     // if (!is_pos_filter_ready || (predict_pos - xyz).norm() > 0.1)
     // {
-    //     history_info.push_back(target);
+        history_info.push_back(target);
     // }
     //若位置粒子滤波器已完成初始化且预测值大小恰当,则对目标位置做滤波
     // else
@@ -84,7 +86,7 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
     // filtered_xyz << xyz[0], xyz[1], filtered_xyz[2];
     // target = {filtered_xyz, (int)filtered_xyz.norm(), timestamp};
     // history_info.pop_back();
-
+    
     //---------------根据目前队列长度选用合适的滤波器------------------------------------
     //当队列长度小于3，仅更新队列
     if (history_info.size() < 4)
@@ -401,11 +403,14 @@ bool ArmorPredictor::setBulletSpeed(double speed)
 
 void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
 {
+    ROS_INFO("START PREDICTING!");
+    //{{{sub
     Eigen::Matrix3d rmat_imu;
     Eigen::Vector3d aiming_point;
     int target_color;
     Eigen::Vector3d target_center3d_cam;
     Eigen::Vector3d target_center3d_world;
+    
     int src_timestamp;
     bool is_target_switched;
     int dead_buffer_cnt;
@@ -425,12 +430,13 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     target_center3d_world[0] = Imsg->target_center3d_world.x;
     target_center3d_world[1] = Imsg->target_center3d_world.y;
     target_center3d_world[2] = Imsg->target_center3d_world.z;
+    // cout<<"target_center3d_world:"<<endl<<target_center3d_world<<endl<<"--------"<<endl;
     src_timestamp = Imsg->src_timestamp;
     is_target_switched = Imsg->is_target_switched;
     dead_buffer_cnt = Imsg->dead_buffer_cnt;
     is_target_spinning = Imsg->is_target_spinning;
     target_center3d_cam_norm = Imsg->target_center3d_cam_norm;
-
+    //sub}}}
     VisionData data;
 // #ifdef USING_PREDICT
     //目前类别预测不是十分稳定,若之后仍有问题，可以考虑去除类别判断条件
@@ -449,7 +455,6 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
 // #else
     // aiming_point = target.center3d_cam;
 // #endif //USING_PREDICT
-
     if (target_color == 2)
         dead_buffer_cnt++;
     else
@@ -479,17 +484,17 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     }
 #endif //SHOW_ALL_ARMOR
 
-#ifdef SHOW_PREDICT
-    auto aiming_2d = coordsolver.reproject(aiming_point);
-    circle(src.img, aiming_2d, 2, {0, 255, 255}, 2);
-#endif //SHOW_PREDICT
+// #ifdef SHOW_PREDICT
+    cout<<"change the predict point..."<<endl;
+    aiming_2d = coordsolver.reproject(aiming_point);
+    // circle(src.img, aiming_2d, 2, {0, 255, 255}, 2);
+// #endif //SHOW_PREDICT
 
     auto angle = coordsolver.getAngle(aiming_point, rmat_imu);
     //若预测出错则直接世界坐标系下坐标作为击打点
     if (isnan(angle[0]) || isnan(angle[1]))
         angle = coordsolver.getAngle(target_center3d_cam, rmat_imu);
     auto time_predict = std::chrono::steady_clock::now();
-
     // double dr_crop_ms = std::chrono::duration<double,std::milli>(time_crop - time_start).count();
     // double dr_infer_ms = std::chrono::duration<double,std::milli>(time_infer - time_crop).count();
     // double dr_predict_ms = std::chrono::duration<double,std::milli>(time_predict - time_infer).count();
@@ -531,10 +536,10 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     //若预测出错取消本次数据发送
     if (isnan(angle[0]) || isnan(angle[1]))
     {
-        LOG(ERROR)<<"NAN Detected! Data Transmit Aborted!";
+        ROS_INFO("NAN Detected! Data Transmit Aborted!");
         return ;
     }
-    cout<<"predict done !"<<endl;
+    // cout<<"predict done !"<<endl;
     // pub
     
     ros::NodeHandle nh;
@@ -545,15 +550,26 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     return ;
 }
 
+void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
+{
+    cv::Mat img = cv_bridge::toCvShare(Imsg, "bgr8")->image;
+    circle(img, aiming_2d, 2, {0, 255, 255}, 2);
+    cv::imshow("PRE",img);
+    cv::waitKey(1);
+    return ;
+}
+
 int main(int argc, char** argv)
 {
+    predictor_param_loader.initParam(predict_param_path);
     coordsolver.loadParam(camera_param_path,camera_name);
+    predictor.initParam(predictor_param_loader);
     setlocale(LC_ALL,"");
-    ros::init(argc, argv, "buff_predict"); // 初始化ROS节点
+    ros::init(argc, argv, "armor_predict"); // 初始化ROS节点
     ros::NodeHandle nh;
-    ros::Subscriber sub = nh.subscribe("B_track_predict", 100, callback_predict);
-    // image_transport::ImageTransport it(nh);
-    // image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
+    ros::Subscriber sub_predict = nh.subscribe("A_track_predict", 100, callback_predict);
+    image_transport::ImageTransport it(nh);
+    image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
     ros::spin();
     return 0;
 }

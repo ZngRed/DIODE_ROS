@@ -160,10 +160,10 @@ add_executable(armor_predict src/armor_predict.cpp)
 #   ${catkin_LIBRARIES}
 # )
 target_link_libraries(buff_predict
-  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
+  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
 )
 target_link_libraries(armor_predict
-  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres glog matplotlib_cpp::matplotlib_cpp
+  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
 )
 
 #############

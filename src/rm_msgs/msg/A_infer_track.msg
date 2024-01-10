@@ -1,1 +1,2 @@
 int64 src_timestamp
+int8 detect_color

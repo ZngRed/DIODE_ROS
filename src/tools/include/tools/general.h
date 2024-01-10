@@ -24,6 +24,7 @@ using namespace std;
 using namespace cv;
 
 const string camera_param_path = "/home/dhu/Model/coord_param.yaml";
+const string predict_param_path = "/home/dhu/Model/filter_param.yaml";
 
 // const string camera_name = "KE0200110076";  // 哨兵下云台
 const string camera_name = "KE0200110075";     // 步兵（4号)

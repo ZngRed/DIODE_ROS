@@ -13,9 +13,6 @@
 #include <Eigen/Core>
 #include <opencv2/opencv.hpp>
 #include <yaml-cpp/yaml.h>
-#include <fmt/format.h>
-#include <fmt/color.h>
-#include <glog/logging.h>
 
 using namespace cv;
 using namespace std;
