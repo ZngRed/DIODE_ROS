@@ -9,7 +9,7 @@ std::map<string,double> spin_score_map;     //反小陀螺，记录各装甲板�
 int anti_spin_judge_high_thres = 2e4;   //大于该阈值认为该车已开启陀螺
 int anti_spin_judge_low_thres = 2e3;    //小于该阈值认为该车已关闭陀螺
 int anti_spin_max_r_multiple = 4.5;
-const int max_delta_t = 50;                //使用同一预测器的最大时间间隔(ms)
+const int max_delta_t = 500;                //使用同一预测器的最大时间间隔(ms)
 const int armor_type_wh_thres = 2.8;      //大小装甲板长宽比阈值
 const double armor_roi_expand_ratio_width = 1;
 const double armor_roi_expand_ratio_height = 2;
@@ -251,11 +251,11 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     ROS_INFO("track subscribed! %d", src_timestamp);
 
     // ///------------------------将对象排序，保留面积较大的对象---------------------------------
-    sort(armors.begin(),armors.end(),[](Armor& prev, Armor& next)
-                                    {return prev.area > next.area;});
-    //若对象较多保留前按面积排序后的前max_armors个
-    if (armors.size() > max_armors)
-        armors.resize(max_armors);
+    // sort(armors.begin(),armors.end(),[](Armor& prev, Armor& next)
+    //                                 {return prev.area > next.area;});
+    // //若对象较多保留前按面积排序后的前max_armors个
+    // if (armors.size() > max_armors)
+    //     armors.resize(max_armors);
     //若无合适装甲板
     if (armors.empty())
     {
@@ -302,15 +302,13 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         }
         // cout<<tracker_key<<endl;
         auto predictors_with_same_key = trackers_map.count(tracker_key);
-        //当不存在该类型装甲板ArmorTracker且该装甲板Tracker类型不为灰色装甲板
-        if (predictors_with_same_key == 0 && (*armor).color != 2)
+        if (predictors_with_same_key == 0 && (*armor).color != 2) //当不存在该类型装甲板ArmorTracker且该装甲板Tracker类型不为灰色装甲板
         {
             ArmorTracker tracker((*armor), src_timestamp);
             auto target_predictor = trackers_map.insert(make_pair((*armor).key, tracker));
             new_armors_cnt_map[(*armor).key]++;
         }
-        //当存在一个该类型ArmorTracker
-        else if (predictors_with_same_key == 1)
+        else if (predictors_with_same_key == 1) //当存在一个该类型ArmorTracker
         {
             auto candidate = trackers_map.find(tracker_key);
             auto delta_t = src_timestamp - (*candidate).second.last_timestamp;
@@ -318,7 +316,10 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
             // auto iou = (*candidate).second.last_armor.roi & (*armor)
             // auto velocity = (delta_dist / delta_t) * 1e3;
             //若匹配则使用此ArmorTracker
-            if (delta_dist <= max_delta_dist && delta_t > 0 && (*candidate).second.last_armor.roi.contains((*armor).center2d))
+            cout<<"delta_dist: "<<delta_dist<<" delta_t: "<<delta_t<<endl;
+            cout<<(*candidate).second.last_armor.roi<<" :: "<<(*armor).center2d<<endl;
+            cout<<(*candidate).second.last_armor.roi.contains((*armor).center2d)<<endl;
+            if (delta_dist <= max_delta_dist && delta_t >= 0 && (*candidate).second.last_armor.roi.contains((*armor).center2d))
             {
                 (*candidate).second.update((*armor), src_timestamp);
             }
@@ -330,8 +331,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
                 new_armors_cnt_map[(*armor).key]++;
             }
         }
-        //当存在多个该类型装甲板ArmorTracker
-        else
+        else //当存在多个该类型装甲板ArmorTracker
         {
             //1e9无实际意义，仅用于以非零初始化
             double min_delta_dist = 1e9;
@@ -370,7 +370,6 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
                 trackers_map.insert(make_pair((*armor).key, tracker));
                 new_armors_cnt_map[(*armor).key]++;
             }
-
         }
     }
     if (trackers_map.size() != 0)
@@ -380,7 +379,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         {
             //删除元素后迭代器会失效，需先行获取下一元素
             auto next = iter;
-            // cout<<(*iter).second.last_timestamp<<"  "<<src_timestamp<<endl;
+            cout<<"delta_timestamp: "<<(*iter).second.last_timestamp<<"  "<<src_timestamp<<endl;
             if ((src_timestamp - (*iter).second.last_timestamp) > max_delta_t)
                 next = trackers_map.erase(iter);
             else
@@ -388,7 +387,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
             iter = next;
         }
     }
-    // cout<<"::"<<trackers_map.size()<<endl;
+    cout<<"trackers_map.size():  "<<trackers_map.size()<<endl;
     // for (auto member : new_armors_cnt_map)
     //     cout<<member.first<<" : "<<member.second<<endl;
 // #ifdef USING_SPIN_DETECT
@@ -422,7 +421,6 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
                         best_prev_timestamp = (*iter).second.last_timestamp;
                         last_tracker = &(*iter).second;
                     }
-                    
                 }
                 if (new_tracker != nullptr && last_tracker != nullptr)
                 {
@@ -494,7 +492,6 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     ///---------------------------获取最终装甲板序列---------------------------------------
     bool is_target_spinning;
     
-    Eigen::Vector3d aiming_point;
     std::vector<ArmorTracker*> final_trackers;
     std::vector<Armor> final_armors;
     //TODO:反陀螺防抖(增加陀螺模式与常规模式)
@@ -629,6 +626,7 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         else
             is_target_switched = false;
     }
+    cout<<"target.center3d_world: "<<endl<<target.center3d_world<<endl<<"------"<<endl;
     //pub
     rm_msgs::A_track_predict Omsg;
 
@@ -636,9 +634,6 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
         Omsg.rmat_imu[i] = rmat_imu(i);
     }
     Omsg.target_color = target.color;
-    Omsg.aiming_point.x = aiming_point[0];
-    Omsg.aiming_point.y = aiming_point[1];
-    Omsg.aiming_point.z = aiming_point[2];
     Omsg.target_center3d_cam.x = target.center3d_cam[0];
     Omsg.target_center3d_cam.y = target.center3d_cam[1];
     Omsg.target_center3d_cam.z = target.center3d_cam[2];
@@ -650,17 +645,13 @@ void callback_track(const rm_msgs::A_infer_track::ConstPtr& Imsg)
     Omsg.dead_buffer_cnt = dead_buffer_cnt;
     Omsg.is_target_spinning = is_target_spinning;
     Omsg.target_center3d_cam_norm = target.center3d_cam.norm();
-    Omsg.last_roi_center.x = target.center2d.x; 
+    Omsg.last_roi_center.x = target.center2d.x;
     Omsg.last_roi_center.y = target.center2d.y;
     Omsg.last_target_area = target.area;
     ros::NodeHandle nh;
     ROS_INFO("The target is going to be published !");
     pub = nh.advertise<rm_msgs::A_track_predict>("A_track_predict", 10);
     pub.publish(Omsg);
-    //update
-    // is_last_target_exists = true;
-    // last_fan = target;
-    // fans.clear();
     return ;
 }
 
@@ -707,6 +698,7 @@ void callback_armor(const rm_msgs::A_infer_armor::ConstPtr& Imsg)
                     bbox.width * armor_roi_expand_ratio_width,
                     bbox.height * armor_roi_expand_ratio_height
                     );
+    // cout<<"armor_roi: "<<endl<<armor.roi<<endl<<"@@@@@@@@"<<endl;
     // 若装甲板置信度小于高阈值，需要相同位置存在过装甲板才放行
     if (armor.conf < armor_conf_high_thres){
         if (last_armors.empty()){
@@ -753,10 +745,12 @@ void callback_armor(const rm_msgs::A_infer_armor::ConstPtr& Imsg)
     
     armor.type = target_type;
     armor.center3d_world = pnp_result.armor_world;
+    // cout<<pnp_result.armor_world<<endl;
     armor.center3d_cam = pnp_result.armor_cam;
     armor.euler = pnp_result.euler;
     armor.area = Imsg->area;
     armors.push_back(armor);
+    cout<<"armors.size(): "<<armors.size()<<endl;
     return ;
 }
 
@@ -768,6 +762,7 @@ void callback_update(const rm_msgs::A_update::ConstPtr& Imsg)
     is_last_target_exists = true;
     last_armors.clear();
     last_armors = armors;
+    armors.clear();
     return ;
 }
 
@@ -779,7 +774,7 @@ int main(int argc,char** argv)
     ros::NodeHandle nh;
     ros::Subscriber sub_update = nh.subscribe("A_update", 100, callback_update);
     ros::Subscriber sub_armor = nh.subscribe("A_infer_armor", 100, callback_armor);
-    ros::Subscriber sub_track = nh.subscribe("A_infer_track", 1, callback_track);
+    ros::Subscriber sub_track = nh.subscribe("A_infer_track", 100, callback_track);
     ros::spin();
     return 0;
 }

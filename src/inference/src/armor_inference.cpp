@@ -617,10 +617,9 @@ int main(int argc, char** argv)
     cv::namedWindow("IMG");
     ros::init(argc, argv, "armor_inference"); // 初始化ROS节点
     ros::NodeHandle nh;
-    ros::Rate loop_rate(30);
-    image_transport::ImageTransport it(nh);
     ros::Subscriber sub_update = nh.subscribe("A_update", 10, callback_A_update);
     ros::Subscriber sub_timestamp = nh.subscribe("src_timestamp", 10, callback_timestamp);
+    image_transport::ImageTransport it(nh);
     image_transport::Subscriber sub_img = it.subscribe("images", 10, callback_infer);
     ros::spin();
     return 0;

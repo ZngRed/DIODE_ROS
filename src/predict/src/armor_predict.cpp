@@ -410,7 +410,6 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     int target_color;
     Eigen::Vector3d target_center3d_cam;
     Eigen::Vector3d target_center3d_world;
-    
     int src_timestamp;
     bool is_target_switched;
     int dead_buffer_cnt;
@@ -420,9 +419,6 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[1],Imsg->rmat_imu[2],
                 Imsg->rmat_imu[3],Imsg->rmat_imu[4],Imsg->rmat_imu[5],
                 Imsg->rmat_imu[6],Imsg->rmat_imu[7],Imsg->rmat_imu[8];
-    aiming_point[0] = Imsg->aiming_point.x;
-    aiming_point[1] = Imsg->aiming_point.y;
-    aiming_point[2] = Imsg->aiming_point.z;
     target_color = Imsg->target_color;
     target_center3d_cam[0] = Imsg->target_center3d_cam.x;
     target_center3d_cam[1] = Imsg->target_center3d_cam.y;
@@ -430,7 +426,7 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     target_center3d_world[0] = Imsg->target_center3d_world.x;
     target_center3d_world[1] = Imsg->target_center3d_world.y;
     target_center3d_world[2] = Imsg->target_center3d_world.z;
-    // cout<<"target_center3d_world:"<<endl<<target_center3d_world<<endl<<"--------"<<endl;
+    
     src_timestamp = Imsg->src_timestamp;
     is_target_switched = Imsg->is_target_switched;
     dead_buffer_cnt = Imsg->dead_buffer_cnt;
@@ -443,11 +439,12 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     if (is_target_switched)
     {
         predictor.initParam(predictor_param_loader);
-        // cout<<"initing"<<endl;
+        cout<<"target_center3d_cam : "<<target_center3d_cam<<endl;
         aiming_point = target_center3d_cam;
     }
     else
-    {
+    {   
+        cout<<"target_center3d_world:"<<endl<<target_center3d_world<<endl<<"--------"<<endl;
         auto aiming_point_world = predictor.predict(target_center3d_world, src_timestamp);
         // aiming_point = aiming_point_world;
         aiming_point = coordsolver.worldToCam(aiming_point_world, rmat_imu);
@@ -485,7 +482,7 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
 #endif //SHOW_ALL_ARMOR
 
 // #ifdef SHOW_PREDICT
-    cout<<"change the predict point..."<<endl;
+    cout<<"change the predict point..."<<endl<<aiming_point<<endl<<"======"<<endl;
     aiming_2d = coordsolver.reproject(aiming_point);
     // circle(src.img, aiming_2d, 2, {0, 255, 255}, 2);
 // #endif //SHOW_PREDICT
@@ -541,7 +538,10 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     }
     // cout<<"predict done !"<<endl;
     // pub
-    
+    rm_msgs::A_update Omsg;
+    Omsg.last_roi_center.x = Imsg->last_roi_center.x;
+    Omsg.last_roi_center.y = Imsg->last_roi_center.y;
+    Omsg.last_target_area = Imsg->last_target_area;
     ros::NodeHandle nh;
     pub = nh.advertise<rm_msgs::A_update>("A_update", 10);
     pub.publish(Omsg);
