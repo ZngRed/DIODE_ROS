@@ -1,0 +1,12 @@
+float32 quat_0
+float32 quat_1
+float32 quat_2
+float32 quat_3
+float32 gyro_0
+float32 gyro_1
+float32 gyro_2
+float32 acc_0
+float32 acc_1
+float32 acc_2
+float32 bullet_speed
+int64 mode

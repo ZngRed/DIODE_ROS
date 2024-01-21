@@ -1,14 +1,11 @@
 #include <armor_inference/armor_inference.h>
 
-int mode;
+// int mode;
 Color detect_color;
 bool is_last_target_exists;
-bool is_target_switched;
 int lost_cnt;
-int dead_buffer_cnt;
 int src_timestamp;
 double last_target_area;
-double last_bullet_speed;
 Point2i last_roi_center;
 Point2i roi_offset;
 Size2i input_size;
@@ -19,10 +16,13 @@ const double no_crop_ratio = 4e-3;      //禁用ROI裁剪的装甲板占图像�
 
 Point2f zoom_offset = {500, 400};       //左上角定点 x y排序
 
+ros::Publisher pub;
+ros::Publisher pub_init;
 ros::Publisher pub_armor;
 ros::Publisher pub_track;
 rm_msgs::A_infer_armor Omsg_armor;
 rm_msgs::A_infer_track Omsg_track;
+rm_msgs::Can_send Omsg_Can;
 
 armor_infer infer;
 
@@ -42,7 +42,7 @@ static constexpr float MERGE_MIN_IOU = 0.9;
  * @param img 所需处理的图像
  * @return ** Point2i ROI中心点
  */
-// #ifdef USING_ROI
+#ifdef USING_ROI
 Point2i cropImageByROI(Mat &img)
 {
     //FIXME:自适应大小ROI截取可能存在Bug
@@ -80,7 +80,7 @@ Point2i cropImageByROI(Mat &img)
 
     return offset;
 }
-// #endif //USING_ROI
+#endif //USING_ROI
 
 /**
  * @brief 海伦公式计算三角形面积
@@ -375,7 +375,7 @@ static void decodeOutputs(const float* prob, std::vector<ArmorObject>& objects,
         generateYoloxProposals(grid_strides, prob, transform_matrix, BBOX_CONF_THRESH, proposals);
         qsort_descent_inplace(proposals);
 
-        if (proposals.size() >= TOPK) 
+        if (proposals.size() >= TOPK)
             proposals.resize(TOPK);
         std::vector<int> picked;
         nms_sorted_bboxes(proposals, picked, NMS_THRESH);
@@ -391,11 +391,8 @@ static void decodeOutputs(const float* prob, std::vector<ArmorObject>& objects,
 void drawPred(Mat& frame, cv::Point2f landmark[])   // Draw the predicted bounding box
 {
     //画出扇叶五点、能量机关中心
-    for (int i = 0; i < 5; i++){
+    for (int i = 0; i < 4; i++)
         circle(frame, landmark[i], 5, Scalar(0, 255, 0), -1);
-    }
-    cv::imshow("IMG",frame);
-    cv::waitKey(1);
     return ;
 }
 
@@ -403,11 +400,8 @@ armor_infer::armor_infer()
 {
     model_init();
     lost_cnt = 0;
-    dead_buffer_cnt = 0;
     is_last_target_exists = false;
-    is_target_switched = false;
     last_target_area = 0;
-    last_bullet_speed = 0;
     input_size = {416, 416};
     // predictor.initParam(predictor_param_loader);
 
@@ -453,7 +447,7 @@ void armor_infer::model_init()
     return ;
 }
 
-bool armor_infer::infer(Mat &img)
+bool armor_infer::infer(Mat& img)
 {
     std::vector<ArmorObject> objects;
     ros::NodeHandle nh;
@@ -491,6 +485,13 @@ bool armor_infer::infer(Mat &img)
     int img_w = img.cols;
     int img_h = img.rows;
     decodeOutputs(net_pred, objects, transfrom_matrix, img_w, img_h);
+
+    std_msgs::Int64 tracker_init;
+    tracker_init.data = objects.size();
+    pub_init = nh.advertise<std_msgs::Int64>("A_init", 1);
+    // ROS_INFO("start tracker init...");
+    pub_init.publish(tracker_init);
+
     for (auto object = objects.begin(); object != objects.end(); ++object){
         //对候选框预测角点进行平均,降低误差
         if ((*object).pts.size() >= 8){
@@ -522,19 +523,19 @@ bool armor_infer::infer(Mat &img)
             Omsg_armor.cls = (*object).cls;
             Omsg_armor.color = (*object).color;
             Omsg_armor.prob = (*object).prob;
-            pub_armor = nh.advertise<rm_msgs::A_infer_armor>("A_infer_armor", 100);
-            ROS_INFO("PUB ARMOR!");
+            pub_armor = nh.advertise<rm_msgs::A_infer_armor>("A_infer_armor", 1);
+            // ROS_INFO("PUB ARMOR!");
             pub_armor.publish(Omsg_armor);
         }
         (*object).area = (int)(calcTetragonArea((*object).apex));
     }
     if (objects.size() != 0){
-        ROS_INFO("objects.size: %ld", objects.size());
+        // ROS_INFO("objects.size: %ld", objects.size());
         Omsg_track.src_timestamp = src_timestamp;
         if(detect_color == BLUE)
             Omsg_track.detect_color = 0;
         else Omsg_track.detect_color = 1;
-        pub_track = nh.advertise<rm_msgs::A_infer_track>("A_infer_track", 100);
+        pub_track = nh.advertise<rm_msgs::A_infer_track>("A_infer_track", 1);
         pub_track.publish(Omsg_track);
         return true;
     }
@@ -547,27 +548,8 @@ void callback_infer(const sensor_msgs::ImageConstPtr& Imsg)
     vector<ArmorObject> objects;
 
     auto input = img.clone();
-    // cout<<input.size<<endl;
     //若为前哨站吊射模式,直接截取图像中间部分进行处理
-
-// #ifndef DEBUG_WITHOUT_COM
-//     //设置弹速,若弹速大于10m/s值,且弹速变化大于0.5m/s则更新
-//     if (src.bullet_speed > 10)
-//     {
-//         double bullet_speed;
-//         if (abs(src.bullet_speed - last_bullet_speed) < 0.5 || abs(src.bullet_speed - last_bullet_speed) > 1.5)
-//         {
-//             bullet_speed = src.bullet_speed;
-//             predictor.setBulletSpeed(bullet_speed);
-//             coordsolver.setBulletSpeed(bullet_speed);
-//             last_bullet_speed = bullet_speed;
-//             LOG(INFO)<<"SPD Updated:"<<src.bullet_speed<<" : "<<last_bullet_speed;
-//         }
-        // 
-//     }
-// #endif //DEBUG_WITHOUT_COM
-
-// #ifdef USING_ROI
+#ifdef USING_ROI
     //吊射模式采用固定ROI
     if (mode == 2){
         //若不存在目标则进行中间区域ROI，默认大小为416x416
@@ -581,7 +563,7 @@ void callback_infer(const sensor_msgs::ImageConstPtr& Imsg)
     }else{
         roi_offset = cropImageByROI(input);
     }
-// #endif  //USING_ROI
+#endif //USING_ROI
     //若未检测到目标
     
     if (!infer.infer(img))
@@ -592,8 +574,14 @@ void callback_infer(const sensor_msgs::ImageConstPtr& Imsg)
         lost_cnt++;
         is_last_target_exists = false;
         ROS_WARN("[AUTOAIM] No target detected!");
-        return ;
+        ros::NodeHandle nh;
+        Omsg_Can.pitch_angle = 0;
+        Omsg_Can.yaw_angle = 0;
+        pub = nh.advertise<rm_msgs::Can_send>("Can_send", 1);
+        pub.publish(Omsg_Can);
     }
+    cv::imshow("IMG",img);
+    cv::waitKey(1);
     return ;
 }
 
@@ -603,11 +591,20 @@ void callback_timestamp(const std_msgs::Int64::ConstPtr &Imsg)
     return ;
 }
 
-void callback_A_update(const rm_msgs::A_update::ConstPtr& Imsg)
+void callback_update(const rm_msgs::A_update::ConstPtr& Imsg)
 {
+    lost_cnt = 0;
+    is_last_target_exists = true;
     last_roi_center.x = Imsg->last_roi_center.x;
     last_roi_center.y = Imsg->last_roi_center.y;
     last_target_area = Imsg->last_target_area;
+    return ;
+}
+
+void callback_failed(const rm_msgs::A_failed::ConstPtr& Imsg)
+{
+    lost_cnt++;
+    is_last_target_exists = false;
     return ;
 }
 
@@ -617,10 +614,11 @@ int main(int argc, char** argv)
     cv::namedWindow("IMG");
     ros::init(argc, argv, "armor_inference"); // 初始化ROS节点
     ros::NodeHandle nh;
-    ros::Subscriber sub_update = nh.subscribe("A_update", 10, callback_A_update);
-    ros::Subscriber sub_timestamp = nh.subscribe("src_timestamp", 10, callback_timestamp);
+    ros::Subscriber sub_timestamp = nh.subscribe("src_timestamp", 1, callback_timestamp);
     image_transport::ImageTransport it(nh);
-    image_transport::Subscriber sub_img = it.subscribe("images", 10, callback_infer);
+    image_transport::Subscriber sub_img = it.subscribe("images", 1, callback_infer);
+    ros::Subscriber sub_update = nh.subscribe("A_update", 1, callback_update);
+    ros::Subscriber sub_failed = nh.subscribe("A_failed", 1, callback_failed);
     ros::spin();
     return 0;
 }

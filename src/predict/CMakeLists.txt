@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   rm_msgs
   tools
+  filter
 )
 set(OpenCV_DIR /home/dhu/intel/openvino_2021/opencv/cmake/)
 find_package(OpenCV 4.5.0 REQUIRED)
@@ -160,10 +161,10 @@ add_executable(armor_predict src/armor_predict.cpp)
 #   ${catkin_LIBRARIES}
 # )
 target_link_libraries(buff_predict
-  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
+  coordsolver PF ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
 )
 target_link_libraries(armor_predict
-  coordsolver ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
+  coordsolver PF ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${Eigen3_LIBRARIES} ${tools} Ceres::ceres matplotlib_cpp::matplotlib_cpp
 )
 
 #############

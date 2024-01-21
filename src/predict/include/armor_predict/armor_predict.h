@@ -5,7 +5,10 @@
 #include <image_transport/image_transport.h>
 #include <rm_msgs/A_track_predict.h>
 #include <rm_msgs/A_update.h>
+#include <rm_msgs/Can_send.h>
+#include <rm_msgs/Can_receive.h>
 #include <tools/coordsolver.h>
+#include <filter/particle_filter.h>
 
 #include <iostream>
 #include <ctime>
@@ -19,15 +22,12 @@
 #include <opencv2/core/eigen.hpp>
 #include <yaml-cpp/yaml.h>
 
-// #include "../../filter/particle_filter.h"
 
 using namespace std;
 using namespace cv;
 
 enum SpinHeading {UNKNOWN, CLOCKWISE, COUNTER_CLOCKWISE};
 enum Color {BLUE,RED};
-
-// const string predict_param_path = "../params/filter/filter_param.yaml";
 
 class ArmorPredictor
 {
@@ -80,8 +80,8 @@ private:
 private:
     bool fitting_disabled;                                                  //当前是否禁用拟合
 
-    // ParticleFilter pf_pos;                                                //目前坐标粒子滤波
-    // ParticleFilter pf_v;                                                  //速度粒子滤波
+    ParticleFilter pf_pos;                                                //目前坐标粒子滤波
+    ParticleFilter pf_v;                                                  //速度粒子滤波
     std::deque<TargetInfo> history_info;                                  //目标队列
 
     double bullet_speed = 28;                                          
@@ -97,7 +97,7 @@ private:
 
 public:
     TargetInfo last_target;                                                  //最后目标
-    // TargetInfo last_pf_target;                                               //最后一次粒子滤波后的位置结果
+    TargetInfo last_pf_target;                                               //最后一次粒子滤波后的位置结果
 
     ArmorPredictor();
     ~ArmorPredictor();
@@ -107,7 +107,7 @@ public:
     ArmorPredictor generate();
     Eigen::Vector3d predict(Eigen::Vector3d xyz,  int timestamp);
     Eigen::Vector3d shiftWindowFilter(int start_idx);
-    // PredictStatus predict_pf_run(TargetInfo target, Vector3d &result, int time_estimated);
+    PredictStatus predict_pf_run(TargetInfo target, Vector3d &result, int time_estimated);
     PredictStatus predict_fitting_run(Eigen::Vector3d &result, int time_estimated);
 
 };

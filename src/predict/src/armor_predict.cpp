@@ -6,7 +6,11 @@ ArmorPredictor predictor;
 ArmorPredictor predictor_param_loader;
 CoordSolver coordsolver;
 rm_msgs::A_update Omsg;
+rm_msgs::Can_send Omsg_Can;
 ros::Publisher pub;
+ros::Publisher pub_send;
+
+double last_bullet_speed;
 
 ArmorPredictor::ArmorPredictor()
 {
@@ -18,8 +22,8 @@ ArmorPredictor::~ArmorPredictor()
 ArmorPredictor ArmorPredictor::generate()
 {
     ArmorPredictor new_predictor;
-    // new_predictor.pf_pos.initParam(pf_pos);
-    // new_predictor.pf_v.initParam(pf_v);
+    new_predictor.pf_pos.initParam(pf_pos);
+    new_predictor.pf_v.initParam(pf_v);
     new_predictor.fitting_disabled = false;
 
     return new_predictor;
@@ -28,8 +32,8 @@ ArmorPredictor ArmorPredictor::generate()
 bool ArmorPredictor::initParam(ArmorPredictor &predictor_loader)
 {
     history_info.clear();
-    // pf_pos.initParam(predictor_loader.pf_pos);
-    // pf_v.initParam(predictor_loader.pf_v);
+    pf_pos.initParam(predictor_loader.pf_pos);
+    pf_v.initParam(predictor_loader.pf_v);
     fitting_disabled = false;
     
     return true;
@@ -38,8 +42,8 @@ bool ArmorPredictor::initParam(ArmorPredictor &predictor_loader)
 bool ArmorPredictor::initParam(string coord_path)
 {
     YAML::Node config = YAML::LoadFile(coord_path);
-    // pf_pos.initParam(config,"pos");
-    // pf_v.initParam(config,"v");
+    pf_pos.initParam(config,"pos");
+    pf_v.initParam(config,"v");
     fitting_disabled = false;
     
     return true;
@@ -50,24 +54,24 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
     auto t1=std::chrono::steady_clock::now();
     TargetInfo target = {xyz, (int)xyz.norm(), timestamp};
     //-----------------对位置进行粒子滤波,以降低测距噪声影响-------------------------------------
-    // Eigen::VectorXd measure (2);
-    // measure << xyz[0], xyz[1];
-    // bool is_pos_filter_ready = pf_pos.update(measure);
-    // Eigen::VectorXd predict_pos_xy = pf_pos.predict();
-    // Eigen::Vector3d predict_pos = {predict_pos_xy[0], predict_pos_xy[1], xyz[2]};
+    Eigen::VectorXd measure(2);
+    measure << xyz[0], xyz[1];
+    bool is_pos_filter_ready = pf_pos.update(measure);
+    Eigen::VectorXd predict_pos_xy = pf_pos.predict();
+    Eigen::Vector3d predict_pos = {predict_pos_xy[0], predict_pos_xy[1], xyz[2]};
     //若位置粒子滤波器未完成初始化或滤波结果与目前位置相距过远,则本次不对目标位置做滤波,直接向队列压入原值
-    // if (!is_pos_filter_ready || (predict_pos - xyz).norm() > 0.1)
-    // {
+    if (!is_pos_filter_ready || (predict_pos - xyz).norm() > 0.1)
+    {
         history_info.push_back(target);
-    // }
+    }
     //若位置粒子滤波器已完成初始化且预测值大小恰当,则对目标位置做滤波
-    // else
-    // {
-    //     // cout<<"FIL:"<<predict_pos[0] - xyz[0]<<endl;
-    //     target.xyz[0] = predict_pos[0];
-    //     target.xyz[1] = predict_pos[1];
-    //     history_info.push_back(target);
-    // }
+    else
+    {
+        // cout<<"FIL:"<<predict_pos[0] - xyz[0]<<endl;
+        target.xyz[0] = predict_pos[0];
+        target.xyz[1] = predict_pos[1];
+        history_info.push_back(target);
+    }
     //-----------------进行滑窗滤波,备选方案,暂未使用-------------------------------------
     auto d_xyz = target.xyz - last_target.xyz;
     auto delta_t = timestamp - last_target.timestamp;
@@ -89,6 +93,7 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
     
     //---------------根据目前队列长度选用合适的滤波器------------------------------------
     //当队列长度小于3，仅更新队列
+    // cout<<"history_info.size():\n"<<history_info.size()<<"\n---------------\n";
     if (history_info.size() < 4)
     {
         last_target = target;
@@ -114,52 +119,40 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
             history_info.pop_front();
     }
 
-    
 #ifdef DISABLE_FITTING
     fitting_disabled = true;
 #endif //DISABLE_FITTING
 
     Eigen::Vector3d result = {0, 0, 0};
-    // Eigen::Vector3d result_pf = {0, 0, 0};
+    Eigen::Vector3d result_pf = {0, 0, 0};
     Eigen::Vector3d result_fitting = {0, 0, 0};
-    // PredictStatus is_pf_available;
+    PredictStatus is_pf_available;
     PredictStatus is_fitting_available;
     //需注意粒子滤波使用相对时间（自上一次检测时所经过ms数），拟合使用自首帧所经过时间
     if (fitting_disabled)
     {
-        // auto is_pf_available = predict_pf_run(target, result_pf, delta_time_estimate);
+        auto is_pf_available = predict_pf_run(target, result_pf, delta_time_estimate);
     }
     else
     {
-        // auto get_pf_available = std::async(std::launch::async, [=, &result_pf](){return predict_pf_run(target, result_pf, delta_time_estimate);});
+        auto get_pf_available = std::async(std::launch::async, [=, &result_pf](){return predict_pf_run(target, result_pf, delta_time_estimate);});
         auto get_fitting_available = std::async(std::launch::async, [=, &result_fitting](){return predict_fitting_run(result_fitting, time_estimate);});
 
-        // is_pf_available = get_pf_available.get();
+        is_pf_available = get_pf_available.get();
         is_fitting_available = get_fitting_available.get();
     }
-    // if (fitting_disabled)
-    // {
-    //     return xyz;
-    //     // auto is_pf_available = predict_pf_run(target, result_pf, delta_time_estimate);
-    // }
-    // else
-    // {
-    //     auto get_fitting_available = std::async(std::launch::async, [=, &result_fitting](){return predict_fitting_run(result_fitting, time_estimate);});
-
-    //     is_fitting_available = get_fitting_available.get();
-    // }
     // 进行融合
     if (is_fitting_available.xyz_status[0] && !fitting_disabled)
         result[0] = result_fitting[0];
-    // else if (is_pf_available.xyz_status[0])
-        // result[0] = result_pf[0];
+    else if (is_pf_available.xyz_status[0])
+        result[0] = result_pf[0];
     else
         result[0] = xyz[0];
 
     if (is_fitting_available.xyz_status[1] && !fitting_disabled)
         result[1] = result_fitting[1];
-    // else if (is_pf_available.xyz_status[1])
-        // result[1] = result_pf[1];
+    else if (is_pf_available.xyz_status[1])
+        result[1] = result_pf[1];
     else
         result[1] = xyz[1];
 
@@ -167,7 +160,7 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
         result[2] = result_fitting[2];
     else
         result[2] = xyz[2];
-    // result = result_pf;
+    result = result_pf;
     auto t2=std::chrono::steady_clock::now();
     double dr_ms=std::chrono::duration<double,std::milli>(t2-t1).count();
     // if(timestamp % 10 == 0)
@@ -205,7 +198,6 @@ Eigen::Vector3d ArmorPredictor::predict(Eigen::Vector3d xyz, int timestamp)
     cv::waitKey(1);
 #endif //DRAW_PREDICT
     last_target = target;
-    // return target.xyz;
     return result;
 }
 
@@ -240,51 +232,47 @@ inline Eigen::Vector3d ArmorPredictor::shiftWindowFilter(int start_idx=0)
  * @param time_estimated 本次预测所需的时间提前量
  * @return 预测结果状态
  * **/
-// ArmorPredictor::PredictStatus ArmorPredictor::predict_pf_run(TargetInfo target, Vector3d &result, int time_estimated)
-// {
-//     PredictStatus is_available;
-//     //采取中心差分法,使用 t, t-1, t-2时刻速度,计算t-1时刻的速度
-//     auto target_prev = history_info.at(history_info.size() - 3);
-//     auto target_next = target;
-//     auto v_xyz = (target_next.xyz - target_prev.xyz) / (target_next.timestamp - target_prev.timestamp) * 1e3;
-//     auto t = target_next.timestamp - history_info.at(history_info.size() - 2).timestamp;
-// 
-//     is_available.xyz_status[0] = pf_v.is_ready;
-//     is_available.xyz_status[1] = pf_v.is_ready;
-//     // cout<<v_xyz<<endl;
-// 
-//     //Update
-//     Eigen::VectorXd measure (2);
-//     measure << v_xyz[0], v_xyz[1];
-//     pf_v.update(measure);
-// 
-//     //Predict
-//     auto result_v = pf_v.predict();
-//     cout<<measure<<endl;
-//     // cout<<result_v<<endl;
-//     //TODO:恢复速度预测
-//     // auto predict_x = target.xyz[0];
-//     // auto predict_y = target.xyz[1];
-//     double predict_x;
-//     double predict_y;
-//     if (history_info.size() > 6)
-//     {
-//         predict_x = target.xyz[0] + result_v[0] * (time_estimated + t) / 1e3;
-//         predict_y = target.xyz[1] + result_v[1] * (time_estimated + t) / 1e3;
-//     }
-//     else
-//     {
-//         predict_x = target.xyz[0];
-//         predict_y = target.xyz[1];       
-//     }
-// 
-//     result << predict_x, predict_y, target.xyz[2];
-//     // cout<<result<<endl;
-// 
-//     // cout<<result<<endl;
-// 
-//     return is_available;
-// }
+ArmorPredictor::PredictStatus ArmorPredictor::predict_pf_run(TargetInfo target, Vector3d &result, int time_estimated)
+{
+    PredictStatus is_available;
+    //采取中心差分法,使用 t, t-1, t-2时刻速度,计算t-1时刻的速度
+    auto target_prev = history_info.at(history_info.size() - 3);
+    auto target_next = target;
+    auto v_xyz = (target_next.xyz - target_prev.xyz) / (target_next.timestamp - target_prev.timestamp) * 1e3;
+    auto t = target_next.timestamp - history_info.at(history_info.size() - 2).timestamp;
+
+    is_available.xyz_status[0] = pf_v.is_ready;
+    is_available.xyz_status[1] = pf_v.is_ready;
+    // cout<<v_xyz<<endl;
+
+    //Update
+    Eigen::VectorXd measure(2);
+    measure << v_xyz[0], v_xyz[1];
+    pf_v.update(measure);
+
+    //Predict
+    auto result_v = pf_v.predict();
+    // cout<<measure<<endl;
+    // cout<<result_v<<endl;
+    //TODO:恢复速度预测
+    // auto predict_x = target.xyz[0];
+    // auto predict_y = target.xyz[1];
+    double predict_x;
+    double predict_y;
+    if (history_info.size() > 6)
+    {
+        predict_x = target.xyz[0] + result_v[0] * (time_estimated + t) / 1e3;
+        predict_y = target.xyz[1] + result_v[1] * (time_estimated + t) / 1e3;
+    }
+    else
+    {
+        predict_x = target.xyz[0];
+        predict_y = target.xyz[1];       
+    }
+
+    result << predict_x, predict_y, target.xyz[2];
+    return is_available;
+}
 
 ArmorPredictor::PredictStatus ArmorPredictor::predict_fitting_run(Eigen::Vector3d &result, int time_estimated)
 {
@@ -317,7 +305,7 @@ ArmorPredictor::PredictStatus ArmorPredictor::predict_fitting_run(Eigen::Vector3
     
     for (auto target_info : history_info)
     {
-        cout<<"T : "<<target_info.timestamp / 1e3<<" X:"<<target_info.xyz[0]<<" Y:"<<target_info.xyz[1]<<endl;
+        // cout<<"T : "<<target_info.timestamp / 1e3<<" X:"<<target_info.xyz[0]<<" Y:"<<target_info.xyz[1]<<endl;
         problem_x.AddResidualBlock (     // 向问题中添加误差项
         // 使用自动求导，模板参数：误差类型，输出维度，输入维度，维数要与前面struct中一致
             new ceres::AutoDiffCostFunction<CURVE_FITTING_COST, 1, 2> ( 
@@ -377,8 +365,8 @@ ArmorPredictor::PredictStatus ArmorPredictor::predict_fitting_run(Eigen::Vector3
     is_available.xyz_status[1] = (y_cost <= max_cost);
     // cout<<z_cost<<endl;
     
-    cout<<"X:"<<params_x[0]<<" "<<params_x[1]<<" "<<params_x[2]<<" "<<params_x[3]<<endl; 
-    cout<<"Y:"<<params_y[0]<<" "<<params_y[1]<<" "<<params_y[2]<<" "<<params_y[3]<<endl;
+    // cout<<"X:"<<params_x[0]<<" "<<params_x[1]<<" "<<params_x[2]<<" "<<params_x[3]<<endl; 
+    // cout<<"Y:"<<params_y[0]<<" "<<params_y[1]<<" "<<params_y[2]<<" "<<params_y[3]<<endl;
     // cout<<summary_y.BriefReport()<<endl;
     // cout<<time_estimated<<endl;
     // cout<<bullet_speed<<endl;
@@ -389,8 +377,8 @@ ArmorPredictor::PredictStatus ArmorPredictor::predict_fitting_run(Eigen::Vector3
     // auto x_pred = params_x[0] + params_x[1] * cos(params_x[3] * (time_estimated / 1e3)) + params_x[2] * sin(params_x[3] * (time_estimated / 1e3));
     // auto y_pred = params_y[0] + params_y[1] * cos(params_y[3] * (time_estimated / 1e3)) + params_y[2] * sin(params_y[3] * (time_estimated / 1e3));
 
-    cout<<x_pred<<" : "<<y_pred<<endl;
-    cout<<"..........."<<endl;
+    // cout<<x_pred<<" : "<<y_pred<<endl;
+    // cout<<"..........."<<endl;
     result = {x_pred, y_pred, dc[2]};
     return is_available;
 }
@@ -404,9 +392,9 @@ bool ArmorPredictor::setBulletSpeed(double speed)
 void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
 {
     ROS_INFO("START PREDICTING!");
+    Eigen::Vector3d aiming_point;
     //{{{sub
     Eigen::Matrix3d rmat_imu;
-    Eigen::Vector3d aiming_point;
     int target_color;
     Eigen::Vector3d target_center3d_cam;
     Eigen::Vector3d target_center3d_world;
@@ -416,9 +404,9 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     bool is_target_spinning;
     double target_center3d_cam_norm;
 
-    rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[1],Imsg->rmat_imu[2],
-                Imsg->rmat_imu[3],Imsg->rmat_imu[4],Imsg->rmat_imu[5],
-                Imsg->rmat_imu[6],Imsg->rmat_imu[7],Imsg->rmat_imu[8];
+    rmat_imu << Imsg->rmat_imu[0],Imsg->rmat_imu[3],Imsg->rmat_imu[6],
+                Imsg->rmat_imu[1],Imsg->rmat_imu[4],Imsg->rmat_imu[7],
+                Imsg->rmat_imu[2],Imsg->rmat_imu[5],Imsg->rmat_imu[8];
     target_color = Imsg->target_color;
     target_center3d_cam[0] = Imsg->target_center3d_cam.x;
     target_center3d_cam[1] = Imsg->target_center3d_cam.y;
@@ -426,27 +414,27 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     target_center3d_world[0] = Imsg->target_center3d_world.x;
     target_center3d_world[1] = Imsg->target_center3d_world.y;
     target_center3d_world[2] = Imsg->target_center3d_world.z;
-    
     src_timestamp = Imsg->src_timestamp;
     is_target_switched = Imsg->is_target_switched;
     dead_buffer_cnt = Imsg->dead_buffer_cnt;
     is_target_spinning = Imsg->is_target_spinning;
     target_center3d_cam_norm = Imsg->target_center3d_cam_norm;
     //sub}}}
-    VisionData data;
+    // cout<<"rmat_imu:\n"<<rmat_imu<<"\n---------------\n";
 // #ifdef USING_PREDICT
     //目前类别预测不是十分稳定,若之后仍有问题，可以考虑去除类别判断条件
     if (is_target_switched)
     {
         predictor.initParam(predictor_param_loader);
-        cout<<"target_center3d_cam : "<<target_center3d_cam<<endl;
+        
         aiming_point = target_center3d_cam;
     }
     else
-    {   
-        cout<<"target_center3d_world:"<<endl<<target_center3d_world<<endl<<"--------"<<endl;
+    {
+        // cout<<"target_center3d_world :\n"<<target_center3d_world<<"\n---------------\n";
         auto aiming_point_world = predictor.predict(target_center3d_world, src_timestamp);
         // aiming_point = aiming_point_world;
+        // cout<<"src_timestamp:\n"<<src_timestamp<<"\n---------------\n";
         aiming_point = coordsolver.worldToCam(aiming_point_world, rmat_imu);
     }
 // #else
@@ -461,92 +449,42 @@ void callback_predict(const rm_msgs::A_track_predict::ConstPtr& Imsg)
     line(src.img, Point2f(0, src.img.size().height / 2), Point2f(src.img.size().width, src.img.size().height / 2), {0,255,0}, 1);
 #endif //SHOW_AIM_CROSS
 
-#ifdef SHOW_ALL_ARMOR
-    for (auto armor :armors)
-    {
-        putText(src.img, fmt::format("{:.2f}", armor.conf),armor.apex2d[3],FONT_HERSHEY_SIMPLEX, 1, {0, 255, 0}, 2);
-        if (armor.color == 0)
-            putText(src.img, fmt::format("B{}",armor.id),armor.apex2d[0],FONT_HERSHEY_SIMPLEX, 1, {255, 100, 0}, 2);
-        if (armor.color == 1)
-            putText(src.img, fmt::format("R{}",armor.id),armor.apex2d[0],FONT_HERSHEY_SIMPLEX, 1, {0, 0, 255}, 2);
-        if (armor.color == 2)
-            putText(src.img, fmt::format("N{}",armor.id),armor.apex2d[0],FONT_HERSHEY_SIMPLEX, 1, {255, 255, 255}, 2);
-        if (armor.color == 3)
-            putText(src.img, fmt::format("P{}",armor.id),armor.apex2d[0],FONT_HERSHEY_SIMPLEX, 1, {255, 100, 255}, 2);
-        for(int i = 0; i < 4; i++)
-            line(src.img, armor.apex2d[i % 4], armor.apex2d[(i + 1) % 4], {0,255,0}, 1);
-        rectangle(src.img, armor.roi, {255, 0, 255}, 1);
-        auto armor_center = coordsolver.reproject(armor.center3d_cam);
-        circle(src.img, armor_center, 4, {0, 0, 255}, 2);
-    }
-#endif //SHOW_ALL_ARMOR
-
 // #ifdef SHOW_PREDICT
-    cout<<"change the predict point..."<<endl<<aiming_point<<endl<<"======"<<endl;
     aiming_2d = coordsolver.reproject(aiming_point);
-    // circle(src.img, aiming_2d, 2, {0, 255, 255}, 2);
+    // cout<<"aiming_point:\n"<<aiming_point<<"\n---------------\n";
+    // cout<<"aiming_2d:\n"<<aiming_2d<<"\n===============\n";
 // #endif //SHOW_PREDICT
 
     auto angle = coordsolver.getAngle(aiming_point, rmat_imu);
     //若预测出错则直接世界坐标系下坐标作为击打点
     if (isnan(angle[0]) || isnan(angle[1]))
         angle = coordsolver.getAngle(target_center3d_cam, rmat_imu);
-    auto time_predict = std::chrono::steady_clock::now();
-    // double dr_crop_ms = std::chrono::duration<double,std::milli>(time_crop - time_start).count();
-    // double dr_infer_ms = std::chrono::duration<double,std::milli>(time_infer - time_crop).count();
-    // double dr_predict_ms = std::chrono::duration<double,std::milli>(time_predict - time_infer).count();
-    // double dr_full_ms = std::chrono::duration<double,std::milli>(time_predict - time_start).count();
+    // auto time_predict = std::chrono::steady_clock::now();
 
-#ifdef SHOW_FPS
-    putText(src.img, fmt::format("FPS: {}", int(1000 / dr_full_ms)), {10, 25}, FONT_HERSHEY_SIMPLEX, 1, {0,255,0});
-#endif //SHOW_FPS
-
-#ifdef SHOW_IMG
-    namedWindow("dst",0);
-    imshow("dst",src.img);
-    waitKey(1);
-#endif //SHOW_IMG
-#ifdef PRINT_LATENCY
-    //降低输出频率，避免影响帧率
-    if (src_timestamp % 10 == 0)
-    {
-        fmt::print(fmt::fg(fmt::color::gray), "-----------TIME------------\n");
-        fmt::print(fmt::fg(fmt::color::blue_violet), "Crop: {} ms\n"   ,dr_crop_ms);
-        fmt::print(fmt::fg(fmt::color::golden_rod), "Infer: {} ms\n",dr_infer_ms);
-        fmt::print(fmt::fg(fmt::color::green_yellow), "Predict: {} ms\n",dr_predict_ms);
-        fmt::print(fmt::fg(fmt::color::orange_red), "Total: {} ms\n",dr_full_ms);
-    }
-#endif //PRINT_LATENCY
-    // cout<<target.center3d_world<<endl;
-    // cout<<endl;
-#ifdef PRINT_TARGET_INFO
-    fmt::print(fmt::fg(fmt::color::gray), "-----------INFO------------\n");
-    fmt::print(fmt::fg(fmt::color::blue_violet), "Yaw: {} \n",angle[0]);
-    fmt::print(fmt::fg(fmt::color::golden_rod), "Pitch: {} \n",angle[1]);
-    fmt::print(fmt::fg(fmt::color::green_yellow), "Dist: {} m\n",(float)target.center3d_cam.norm());
-    fmt::print(fmt::fg(fmt::color::white), "Target: {} \n",target.key);
-    fmt::print(fmt::fg(fmt::color::white), "Target Type: {} \n",target.type == SMALL ? "SMALL" : "BIG");
-    fmt::print(fmt::fg(fmt::color::orange_red), "Is Spinning: {} \n",is_target_spinning);
-    fmt::print(fmt::fg(fmt::color::orange_red), "Is Switched: {} \n",is_target_switched);
-#endif //PRINT_TARGET_INFO
-
-    //若预测出错取消本次数据发送
-    if (isnan(angle[0]) || isnan(angle[1]))
-    {
-        ROS_INFO("NAN Detected! Data Transmit Aborted!");
-        return ;
-    }
-    // cout<<"predict done !"<<endl;
-    // pub
+    //pub_update
     rm_msgs::A_update Omsg;
     Omsg.last_roi_center.x = Imsg->last_roi_center.x;
     Omsg.last_roi_center.y = Imsg->last_roi_center.y;
     Omsg.last_target_area = Imsg->last_target_area;
     ros::NodeHandle nh;
-    pub = nh.advertise<rm_msgs::A_update>("A_update", 10);
+    pub = nh.advertise<rm_msgs::A_update>("A_update", 1);
     pub.publish(Omsg);
 
-    data = {(float)angle[1], (float)angle[0], (float)target_center3d_cam_norm, is_target_switched, 1, is_target_spinning, 0};
+    //若预测出错取消本次数据发送
+    if (isnan(angle[0]) || isnan(angle[1]))
+    {
+        ROS_INFO("NAN Detected! Data Transmit Aborted!");
+        Omsg_Can.pitch_angle = 0;
+        Omsg_Can.yaw_angle = 0;
+        pub = nh.advertise<rm_msgs::Can_send>("Can_send", 1);
+        pub.publish(Omsg_Can);
+        return ;
+    }
+    //pub_Can_send
+    Omsg_Can.pitch_angle = (float)angle[1];
+    Omsg_Can.yaw_angle = (float)angle[0];
+    pub_send = nh.advertise<rm_msgs::Can_send>("Can_send", 1);
+    pub_send.publish(Omsg_Can);
     return ;
 }
 
@@ -559,17 +497,36 @@ void imageCallback(const sensor_msgs::ImageConstPtr& Imsg)
     return ;
 }
 
+void callback_Can(const rm_msgs::Can_receive::ConstPtr& Imsg)
+{
+    // Eigen::Quaterniond quat(Imsg->quat_0, Imsg->quat_1, Imsg->quat_2, Imsg->quat_3);
+    // rmat_imu = quat.toRotationMatrix();
+    //设置弹速,若弹速大于10m/s值,且弹速变化大于0.5m/s则更新
+    if (Imsg->bullet_speed > 10)
+    {
+        if (abs(Imsg->bullet_speed - last_bullet_speed) < 0.5
+            || abs(Imsg->bullet_speed - last_bullet_speed) > 1.5)
+        {
+            predictor.setBulletSpeed(Imsg->bullet_speed);
+            last_bullet_speed = Imsg->bullet_speed;
+            // cout<<"BLTSPD Updated:"<<Imsg->bullet_speed<<" : "<<last_bullet_speed;
+        }
+    }
+    return ;
+}
+
 int main(int argc, char** argv)
 {
     predictor_param_loader.initParam(predict_param_path);
     coordsolver.loadParam(camera_param_path,camera_name);
     predictor.initParam(predictor_param_loader);
     setlocale(LC_ALL,"");
-    ros::init(argc, argv, "armor_predict"); // 初始化ROS节点
+    ros::init(argc, argv, "armor_predict"); //初始化ROS节点
     ros::NodeHandle nh;
-    ros::Subscriber sub_predict = nh.subscribe("A_track_predict", 100, callback_predict);
+    ros::Subscriber sub_receive = nh.subscribe("Can_receive", 1, callback_Can);
+    ros::Subscriber sub_predict = nh.subscribe("A_track_predict", 1, callback_predict);
     image_transport::ImageTransport it(nh);
-    image_transport::Subscriber sub_img = it.subscribe("images", 10, imageCallback);
+    image_transport::Subscriber sub_img = it.subscribe("images", 1, imageCallback);
     ros::spin();
     return 0;
 }

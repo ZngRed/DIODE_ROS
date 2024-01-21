@@ -287,38 +287,46 @@ DaHengCamera::~DaHengCamera()
 }
 
 int main(int argc, char** argv)
-{   
+{
+    auto time_start=std::chrono::steady_clock::now();
     setlocale(LC_ALL,"");
     DaHengCamera DaHeng;
     DaHeng.StartDevice(1);
-        // 设置分辨率
+    //设置分辨率
     DaHeng.SetResolution(1,1);
-        // 开始采集帧
+    //开始采集帧
     DaHeng.SetStreamOn();
-        //更新时间戳，设置时间戳偏移量
-        // DaHeng.UpdateTimestampOffset(time_start);
-        // 设置曝光事件
-    DaHeng.SetExposureTime(3500);
-        // 设置1
+    //更新时间戳，设置时间戳偏移量
+    // DaHeng.UpdateTimestampOffset(time_start);
+    //设置曝光事件
+    DaHeng.SetExposureTime(8000);
+    //设置1
     DaHeng.SetGAIN(3, 16);
-        // manual白平衡 BGR->012
+    //manual白平衡 BGR->012
     DaHeng.Set_BALANCE(0,1.56);
     DaHeng.Set_BALANCE(1,1.0);
-    DaHeng.Set_BALANCE(2,1.548);   
+    DaHeng.Set_BALANCE(2,1.548);
     cv::Mat IMG;
     
-    ros::init(argc, argv, "DaHengCamera"); // 初始化ROS节点
+    ros::init(argc, argv, "DaHengCamera"); //初始化ROS节点
     ros::NodeHandle nh;
     image_transport::ImageTransport it(nh);
-    image_transport::Publisher image_pub = it.advertise("images", 1); // 创建图像发布者 话题名称为images
-                                                                                // TODO:作为外参引入
+    image_transport::Publisher image_pub = it.advertise("images", 1); //创建图像发布者 话题名称为images
+                                                                                //TODO:作为外参引入
+    ros::Publisher pub = nh.advertise<std_msgs::Int64>("src_timestamp", 1);
+    sensor_msgs::ImagePtr Omsg_img;
+    std_msgs::Int64 Omsg_timestamp;
 
-    ros::Rate loop_rate(100); // 发布频率为100Hz
+    ros::Rate loop_rate(40); //发布频率为Hz
     while (nh.ok())
     {
+        auto time_cap=std::chrono::steady_clock::now();
         cv::Mat original_image=DaHeng.GetMat(IMG);
-        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", original_image).toImageMsg(); // 转换为ROS图像消息
-        image_pub.publish(msg); // 发布图像消息
+        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", original_image).toImageMsg(); //转换为ROS图像消息
+        Omsg_timestamp.data = (int)(std::chrono::duration<double,std::milli>(time_cap - time_start).count());
+        std::cout<<"src_timestamp: "<<Omsg_timestamp.data<<"\n";
+        image_pub.publish(msg); //发布图像消息
+        pub.publish(Omsg_timestamp);
         ros::spinOnce();
         loop_rate.sleep();
     }

@@ -129,7 +129,10 @@ include_directories(
 #   src/${PROJECT_NAME}/tools.cpp
 # )
 add_library(coordsolver
-  src/coordsolver.cpp src/general.cpp
+  src/coordsolver.cpp
+)
+add_library(generals
+  src/general.cpp
 )
 
 ## Add cmake target dependencies of the library
@@ -158,9 +161,11 @@ add_library(coordsolver
 #   ${catkin_LIBRARIES}
 # )
 target_link_libraries(coordsolver
+  generals ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
+)
+target_link_libraries(generals
   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} yaml-cpp
 )
-
 
 #############
 ## Install ##

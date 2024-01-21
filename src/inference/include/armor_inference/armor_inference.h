@@ -7,6 +7,8 @@
 #include <rm_msgs/A_infer_armor.h>
 #include <rm_msgs/A_infer_track.h>
 #include <rm_msgs/A_update.h>
+#include <rm_msgs/A_failed.h>
+#include <rm_msgs/Can_send.h>
 
 #include <inference_engine.hpp>
 #include <opencv2/opencv.hpp>

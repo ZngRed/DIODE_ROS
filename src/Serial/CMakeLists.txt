@@ -17,7 +17,6 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
-
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
@@ -118,6 +117,7 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   include
+  lib
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -137,7 +137,7 @@ include_directories(
 # add_executable(${PROJECT_NAME}_node src/Serial_node.cpp)
 # add_executable(serial_receive src/serial_receive.cpp)
 # add_executable(serial_send src/serial_send.cpp)
-#add_executable(Can src/Can.cpp)
+add_executable(Can src/Can.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -159,9 +159,9 @@ include_directories(
 # target_link_libraries(serial_send
 #   ${catkin_LIBRARIES}
 # )
-# target_link_libraries(Can
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(Can
+  ${catkin_LIBRARIES} pcanbasic
+)
 
 #############
 ## Install ##

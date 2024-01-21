@@ -1,14 +1,15 @@
 <launch>
-    <!-- <node pkg="img_pub" type="DaHengCamera" name="DaHengCamera"/> -->
-
+    <node pkg="img_pub" type="DaHengCamera" name="DaHengCamera"/>
     <!-- <node pkg="img_pub" type="USBCamera" name="USBCamera"/> -->
+    <!-- <node pkg="img_pub" type="Using_Video" name="Using_Video"/> -->
 
-    <node pkg="img_pub" type="Using_Video" name="Using_Video"/>
-
-    <node pkg="inference" type="buff_inference" name="buff_inference"/>
-
+    <!-- <node pkg="inference" type="buff_inference" name="buff_inference" output="screen"/>
     <node pkg="tracker" type="buff_tracker" name="buff_tracker"/>
+    <node pkg="predict" type="buff_predict" name="buff_predict"/> -->
+    
+    <node pkg="inference" type="armor_inference" name="armor_inference" output="screen"/>
+    <node pkg="tracker" type="armor_tracker" name="armor_tracker"/>
+    <node pkg="predict" type="armor_predict" name="armor_predict"/>
 
-    <node pkg="predict" type="buff_predict" name="buff_predict"/>
-
+    <node pkg="Serial" type="Can" name="Can" output="screen"/>
 </launch>

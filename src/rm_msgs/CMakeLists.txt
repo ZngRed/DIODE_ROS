@@ -62,6 +62,9 @@ add_message_files(
   B_track_predict.msg
   A_update.msg
   B_update.msg
+  A_failed.msg
+  Can_send.msg
+  Can_receive.msg
 )
 
 ## Generate services in the 'srv' folder

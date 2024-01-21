@@ -1,4 +1,4 @@
-int64[9] rmat_imu
+float64[9] rmat_imu
 int64 target_color
 geometry_msgs/Vector3 target_center3d_cam
 geometry_msgs/Vector3 target_center3d_world
